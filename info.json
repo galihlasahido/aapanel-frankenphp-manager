@@ -1,0 +1,10 @@
+{
+  "title": "FrankenPHP Manager",
+  "name": "frankenphp",
+  "type": "plugin",
+  "ps": "Install and manage FrankenPHP (Caddy-based PHP application server) as a standalone service, separate from Nginx-managed websites",
+  "versions": "1.0",
+  "checks": "/www/server/panel/plugin/frankenphp",
+  "author": "custom",
+  "home": "https://frankenphp.dev"
+}
