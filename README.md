@@ -24,6 +24,26 @@ An [aaPanel](https://www.aapanel.com/) plugin to install and manage [FrankenPHP]
 
 Copy this directory to `/www/server/panel/plugin/frankenphp/` on your aaPanel server, then restart the aaPanel service so it picks up the new plugin. Open it from the aaPanel plugin list and click **Install FrankenPHP**.
 
+### Deploy via git
+
+**First install** (directory doesn't exist yet) — clone straight into the `frankenphp` plugin slot:
+
+```bash
+cd /www/server/panel/plugin/
+git clone https://github.com/galihlasahido/aapanel-frankenphp-manager.git frankenphp
+```
+
+**Update an existing install** (already cloned as above) — pull from inside the plugin directory itself:
+
+```bash
+cd /www/server/panel/plugin/frankenphp/
+git pull
+```
+
+Then restart the aaPanel service so it reloads the plugin code.
+
+> Note: `git pull <url> <branch>` only works from *inside* an already-initialized repo, and the branch here is `main` (not `frankenphp`) — use `git clone ... frankenphp` for a first-time deploy into a folder named `frankenphp`.
+
 ## License
 
 No license specified yet.
