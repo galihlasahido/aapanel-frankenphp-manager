@@ -610,15 +610,86 @@ class frankenphp_main:
         "zlib",
     )
 
+    __spc_default_version = "2.8.5"
+    __spc_version_re = re.compile(r'^\d+\.\d+\.\d+$')
+    __spc_config_file = __install_dir + "/data/spc-extensions.json"
+
+    def _get_spc_config(self):
+        """Config extension static-php-cli (versi + daftar extension) - disimpan di file,
+        BUKAN hardcode Python, supaya bisa di-refresh dari UI tanpa update kode plugin.
+        File belum ada (instalasi baru) -> bootstrap dari default yang sudah teruji manual."""
+        if os.path.exists(self.__spc_config_file):
+            try:
+                cfg = json.loads(public.ReadFile(self.__spc_config_file))
+                if cfg.get("extensions") and cfg.get("spc_version"):
+                    return cfg
+            except:
+                pass
+        default = {
+            "spc_version": self.__spc_default_version,
+            "extensions": list(self.__spc_extensions),
+            "recommended": list(self.__spc_extensions_recommended),
+        }
+        os.makedirs(os.path.dirname(self.__spc_config_file), exist_ok=True)
+        public.WriteFile(self.__spc_config_file, json.dumps(default))
+        return default
+
     def GetPhpVersionOptions(self, get):
         return {"status": True, "options": list(self.__php_version_tags.keys())}
 
     def GetSpcExtensionOptions(self, get):
+        cfg = self._get_spc_config()
         return {
             "status": True,
-            "extensions": list(self.__spc_extensions),
-            "recommended": list(self.__spc_extensions_recommended),
+            "spc_version": cfg["spc_version"],
+            "extensions": cfg["extensions"],
+            "recommended": cfg["recommended"],
         }
+
+    def RefreshSpcExtensions(self, get):
+        """Ambil ulang daftar extension yang didukung dari config/ext.json static-php-cli
+        pada VERSI yang diminta (admin isi manual) - supaya bisa dapat extension yang baru
+        dirilis tanpa nunggu update kode plugin. Versi ini JUGA yang akan dipakai proses
+        build custom berikutnya (Install_frankenphp), jadi pastikan versi yang dipilih
+        memang kompatibel dengan alur build.sh (belum tentu semua versi baru langsung aman)."""
+        version = get.spc_version.strip() if ('spc_version' in get and get.spc_version.strip()) else ""
+        if not self.__spc_version_re.match(version):
+            return public.ReturnMsg(False, "Format versi static-php-cli tidak valid (contoh: 2.8.5)")
+
+        url = "https://raw.githubusercontent.com/crazywhalecc/static-php-cli/%s/config/ext.json" % version
+        shell = public.ExecShell("curl -sL --fail --max-time 30 '%s'" % url)
+        raw = shell[0] if shell and shell[0] else ""
+        try:
+            data = json.loads(raw)
+            new_extensions = sorted(data.keys())
+        except:
+            return public.ReturnMsg(False, "Gagal mengambil/parse config/ext.json untuk versi " + version + " - cek apakah tag rilis tsb benar-benar ada di static-php-cli")
+        if len(new_extensions) < 20:
+            return public.ReturnMsg(False, "Hasil terlalu sedikit (%d extension) - kemungkinan URL/versi salah, tidak diterapkan" % len(new_extensions))
+
+        old_cfg = self._get_spc_config()
+        old_extensions = set(old_cfg["extensions"])
+        added = sorted(set(new_extensions) - old_extensions)
+        removed = sorted(old_extensions - set(new_extensions))
+        # rekomendasi lama dipertahankan sepanjang masih ada di daftar baru - jangan sampai
+        # UI nyimpen extension yang sudah tidak dikenal lagi.
+        new_recommended = sorted(set(old_cfg["recommended"]) & set(new_extensions))
+
+        new_cfg = {"spc_version": version, "extensions": new_extensions, "recommended": new_recommended}
+        os.makedirs(os.path.dirname(self.__spc_config_file), exist_ok=True)
+        public.WriteFile(self.__spc_config_file, json.dumps(new_cfg))
+
+        msg = "Daftar extension diperbarui ke static-php-cli %s (%d extension total)" % (version, len(new_extensions))
+        if added:
+            msg += ". Baru: " + ", ".join(added[:20]) + (" dst" if len(added) > 20 else "")
+        if removed:
+            msg += ". Hilang: " + ", ".join(removed[:20]) + (" dst" if len(removed) > 20 else "")
+        result = public.ReturnMsg(True, msg)
+        result["extensions"] = new_extensions
+        result["recommended"] = new_recommended
+        result["added"] = added
+        result["removed"] = removed
+        return result
 
     def Install(self, get):
         if self._is_installed():
@@ -631,20 +702,23 @@ class frankenphp_main:
             if not self.__custom_php_version_re.match(custom_version):
                 return public.ReturnMsg(False, "Format versi PHP tidak valid (contoh: 8.2 atau 8.2.28)")
 
+            spc_cfg = self._get_spc_config()
+            spc_version = spc_cfg["spc_version"]
+
             ext_raw = get.extensions if 'extensions' in get else ""
             extensions = sorted(set(e.strip() for e in ext_raw.split(",") if e.strip()))
             if not extensions:
                 return public.ReturnMsg(False, "Pilih minimal 1 extension")
-            unknown = [e for e in extensions if e not in self.__spc_extensions]
+            unknown = [e for e in extensions if e not in spc_cfg["extensions"]]
             if unknown:
                 return public.ReturnMsg(False, "Extension tidak dikenal: " + ", ".join(unknown))
 
             public.ExecShell("echo '' > %s" % self.__install_log)
             public.ExecShell(
-                "nohup bash %s/install.sh install custom %s %s >> %s 2>&1 &" %
-                (self.__plugin_dir, custom_version, ",".join(extensions), self.__install_log)
+                "nohup bash %s/install.sh install custom %s %s %s >> %s 2>&1 &" %
+                (self.__plugin_dir, custom_version, ",".join(extensions), spc_version, self.__install_log)
             )
-            return public.ReturnMsg(True, "Build custom dimulai di background (bisa 15-40+ menit)")
+            return public.ReturnMsg(True, "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli " + spc_version + ")")
 
         if php_version not in self.__php_version_tags:
             return public.ReturnMsg(False, "Pilihan versi PHP tidak dikenal: " + php_version)

@@ -59,6 +59,7 @@ Install_frankenphp(){
 Build_frankenphp_source(){
     php_version="$1"
     extensions="$2"
+    spc_version="${3:-2.8.5}"
     build_dir="$install_dir/build-src"
 
     if [ -z "$php_version" ] || [ -z "$extensions" ]; then
@@ -66,7 +67,7 @@ Build_frankenphp_source(){
         exit 1
     fi
 
-    log "=== Build custom: PHP $php_version, extensions: $extensions ==="
+    log "=== Build custom: PHP $php_version, extensions: $extensions (static-php-cli $spc_version) ==="
     log "Menyiapkan direktori build di $build_dir..."
     rm -rf "$build_dir"
     mkdir -p "$build_dir"
@@ -77,10 +78,10 @@ Build_frankenphp_source(){
     apt-get update -y >> "$install_log" 2>&1
     apt-get install -y build-essential autoconf bison re2c pkg-config libtool cmake git curl unzip xz-utils >> "$install_log" 2>&1
 
-    log "Download static-php-cli (spc) 2.8.5..."
+    log "Download static-php-cli (spc) $spc_version..."
     if ! curl -L --fail --max-time 120 -o spc.tar.gz \
-        "https://github.com/crazywhalecc/static-php-cli/releases/download/2.8.5/spc-linux-x86_64.tar.gz"; then
-        log "Download spc gagal."
+        "https://github.com/crazywhalecc/static-php-cli/releases/download/$spc_version/spc-linux-x86_64.tar.gz"; then
+        log "Download spc gagal - cek apakah versi $spc_version benar-benar dirilis di static-php-cli."
         exit 1
     fi
     tar -xzf spc.tar.gz
@@ -90,9 +91,16 @@ Build_frankenphp_source(){
     log "Cek & pasang dependency tambahan yang diminta spc (spc doctor --auto-fix)..."
     ./spc doctor --auto-fix >> "$install_log" 2>&1
 
-    log "Download source PHP $php_version + dependency extension (bisa beberapa menit)..."
-    if ! ./spc download --all --with-php="$php_version" >> "$install_log" 2>&1; then
-        log "Download source PHP $php_version gagal - cek apakah versi tsb valid/didukung spc."
+    # PENTING - php-src & frankenphp HARUS disebut eksplisit di argumen "sources" (bukan cuma
+    # --for-extensions, yang cuma menghitung source utk extension+lib terpilih, TIDAK termasuk
+    # source PHP itu sendiri maupun FrankenPHP) - dicek langsung ke source DownloadCommand.php
+    # static-php-cli. Sebelumnya pakai `--all` (download SEMUA ~131 source didukung meski cuma
+    # butuh segelintir) - boros bandwidth/disk/RAM, dan terbukti bisa bikin proses ke-OOM-kill
+    # di tengah jalan pada VM kecil (curl "client returned ERROR on write" lalu phar spc sendiri
+    # korup) - jangan dikembalikan ke --all tanpa alasan kuat.
+    log "Download source PHP $php_version + FrankenPHP + extension terpilih (bisa beberapa menit)..."
+    if ! ./spc download php-src,frankenphp --for-extensions="$extensions" --with-php="$php_version" >> "$install_log" 2>&1; then
+        log "Download source gagal - cek log di atas (bisa karena versi PHP $php_version tidak didukung static-php-cli $spc_version, koneksi ke GitHub, atau resource server - lihat detail error tepat di atas baris ini)."
         exit 1
     fi
 
@@ -316,7 +324,7 @@ arg2=$2
 if [ "$action" == "install" ]; then
     : > "$install_log"
     if [ "$arg2" == "custom" ]; then
-        Build_frankenphp_source "$3" "$4"
+        Build_frankenphp_source "$3" "$4" "$5"
     else
         Install_frankenphp "$arg2"
     fi

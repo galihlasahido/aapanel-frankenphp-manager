@@ -269,6 +269,16 @@
 			'<input class="fp-input" id="fp_install_custom_version" placeholder="8.2" style="width:100%;margin-bottom:10px;">' +
 			'<div class="fp-form-label" style="margin-bottom:4px;">Extension</div>' +
 			'<div style="margin-bottom:6px;">' +
+			'<span class="fp-hint">static-php-cli: <b id="fp_spc_version_label">...</b></span> ' +
+			'<button type="button" class="btn btn-default btn-sm" id="fp_spc_refresh_toggle">Update daftar extension</button>' +
+			'</div>' +
+			'<div id="fp_spc_refresh_box" style="display:none;margin-bottom:10px;padding:8px;border:1px solid #eceff2;border-radius:6px;background:#fafbfc;">' +
+			'<div class="fp-hint" style="margin-bottom:6px;">Ambil ulang daftar extension dari versi static-php-cli tertentu (cek rilis terbaru di <a href="https://github.com/crazywhalecc/static-php-cli/releases" target="_blank">github.com/crazywhalecc/static-php-cli/releases</a>, isi manual). Versi ini JUGA akan dipakai buat proses build berikutnya &mdash; versi yang belum pernah ditest bisa saja gagal build, jadi hanya ganti kalau memang perlu extension yang belum ada di daftar sekarang.</div>' +
+			'<input class="fp-input" id="fp_spc_new_version" placeholder="2.8.5" style="max-width:150px;display:inline-block;"> ' +
+			'<button type="button" class="btn btn-primary btn-sm" id="fp_spc_refresh_btn">Refresh</button>' +
+			'<div id="fp_spc_refresh_result" style="margin-top:6px;"></div>' +
+			'</div>' +
+			'<div style="margin-bottom:6px;">' +
 			'<button type="button" class="btn btn-default btn-sm" id="fp_ext_recommended">Pilih Umum</button> ' +
 			'<button type="button" class="btn btn-default btn-sm" id="fp_ext_all">Pilih Semua</button> ' +
 			'<button type="button" class="btn btn-default btn-sm" id="fp_ext_none">Kosongkan</button>' +
@@ -293,17 +303,42 @@
 		});
 		$('#fp_ext_all').click(function () { $('#fp_ext_checks input').prop('checked', true); });
 		$('#fp_ext_none').click(function () { $('#fp_ext_checks input').prop('checked', false); });
+		$('#fp_spc_refresh_toggle').click(function () {
+			$('#fp_spc_refresh_box').toggle();
+			if (!$('#fp_spc_new_version').val()) $('#fp_spc_new_version').val((fpSpcExtCache && fpSpcExtCache.spc_version) || '');
+		});
+		$('#fp_spc_refresh_btn').click(fpRefreshSpcExtensions);
 	}
 
 	function fpLoadSpcExtensions() {
 		fpAjaxGet('GetSpcExtensionOptions', function (r) {
 			if (!r.status) { $('#fp_ext_checks').html('<div class="fp-hint">Gagal memuat daftar extension: ' + fpEsc(r.msg) + '</div>'); return; }
 			fpSpcExtCache = r;
+			$('#fp_spc_version_label').text(r.spc_version || '?');
 			var recommended = r.recommended || [];
 			var html = (r.extensions || []).map(function (e) {
 				return '<label><input type="checkbox" value="' + fpEsc(e) + '"' + (recommended.indexOf(e) !== -1 ? ' checked' : '') + '> ' + fpEsc(e) + '</label>';
 			}).join('');
 			$('#fp_ext_checks').html(html);
+		});
+	}
+
+	function fpRefreshSpcExtensions() {
+		var version = $('#fp_spc_new_version').val().trim();
+		if (!version) { layer.msg('Isi versi static-php-cli dulu', { icon: 2 }); return; }
+		var $btn = $('#fp_spc_refresh_btn').prop('disabled', true).text('Memuat...');
+		$('#fp_spc_refresh_result').html('<span class="fp-hint">Mengambil daftar extension dari static-php-cli ' + fpEsc(version) + '...</span>');
+		fpAjaxPost('RefreshSpcExtensions', { spc_version: version }, function (r) {
+			$btn.prop('disabled', false).text('Refresh');
+			$('#fp_spc_refresh_result').html('<span class="fp-hint">' + fpEsc(r.msg) + '</span>');
+			if (r.status) {
+				fpSpcExtCache = { status: true, spc_version: version, extensions: r.extensions, recommended: r.recommended };
+				$('#fp_spc_version_label').text(version);
+				var html = r.extensions.map(function (e) {
+					return '<label><input type="checkbox" value="' + fpEsc(e) + '"' + (r.recommended.indexOf(e) !== -1 ? ' checked' : '') + '> ' + fpEsc(e) + '</label>';
+				}).join('');
+				$('#fp_ext_checks').html(html);
+			}
 		});
 	}
 
