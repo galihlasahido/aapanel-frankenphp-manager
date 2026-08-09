@@ -5,8 +5,24 @@ export PATH
 install_dir=/www/server/frankenphp
 plugin_dir=/www/server/panel/plugin/frankenphp
 install_log=/tmp/frankenphp_install.log
+# /tmp/panelExec.log adalah file BERSAMA yang dipakai aaPanel sendiri (files.py GetTaskSpeed)
+# buat nampilin isi live-log task yang lagi jalan di message box bawaan panel. Sebelumnya kita
+# cuma nulis ke $install_log milik plugin sendiri, jadi kalau task LAIN (mis. plugin/software
+# lain, termasuk "site_total" bawaan aaPanel) kebetulan barusan nulis ke file yang sama, message
+# box nampilin sisa output task itu, bukan punya kita - bukan berarti instalasi FrankenPHP-nya
+# ikut kacau (background execution-nya tetap lewat tabel `tasks`, independen), cuma tampilannya
+# membingungkan. Nulis rangkap ke sini bikin message box aaPanel ikut nampilin progress kita.
+panel_exec_log=/tmp/panelExec.log
 
-log(){ echo "$1" >> "$install_log"; }
+log(){ echo "$1" | tee -a "$install_log" "$panel_exec_log" > /dev/null; }
+
+# Jalankan command, log stdout+stderr-nya ke KEDUA file di atas, TAPI tetap propagate exit
+# code asli command-nya (bukan exit code `tee`) via PIPESTATUS - supaya `if ! run_logged ...`
+# tetap mendeteksi command asli gagal, bukan selalu "berhasil" karena tee sendiri jarang gagal.
+run_logged(){
+    "$@" 2>&1 | tee -a "$install_log" "$panel_exec_log" > /dev/null
+    return "${PIPESTATUS[0]}"
+}
 
 Install_frankenphp(){
     release_tag="$1"
@@ -75,8 +91,8 @@ Build_frankenphp_source(){
 
     log "Memasang dependency build dasar via apt (bisa beberapa menit)..."
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y >> "$install_log" 2>&1
-    apt-get install -y build-essential autoconf bison re2c pkg-config libtool cmake git curl unzip xz-utils >> "$install_log" 2>&1
+    run_logged apt-get update -y
+    run_logged apt-get install -y build-essential autoconf bison re2c pkg-config libtool cmake git curl unzip xz-utils
 
     log "Download static-php-cli (spc) $spc_version..."
     if ! curl -L --fail --max-time 120 -o spc.tar.gz \
@@ -86,7 +102,7 @@ Build_frankenphp_source(){
     fi
     tar -xzf spc.tar.gz
     chmod +x spc
-    ./spc --version >> "$install_log" 2>&1
+    run_logged ./spc --version
 
     # spc manggil api.github.com puluhan kali (cek rilis tiap source) - tanpa token, limitnya
     # cuma 60 request/jam PER-IP (gampang kena 403, apalagi kalau IP server dipakai bareng),
@@ -101,7 +117,7 @@ Build_frankenphp_source(){
     fi
 
     log "Cek & pasang dependency tambahan yang diminta spc (spc doctor --auto-fix)..."
-    ./spc doctor --auto-fix >> "$install_log" 2>&1
+    run_logged ./spc doctor --auto-fix
 
     # PENTING - php-src & frankenphp HARUS disebut eksplisit di argumen "sources" (bukan cuma
     # --for-extensions, yang cuma menghitung source utk extension+lib terpilih, TIDAK termasuk
@@ -111,14 +127,14 @@ Build_frankenphp_source(){
     # di tengah jalan pada VM kecil (curl "client returned ERROR on write" lalu phar spc sendiri
     # korup) - jangan dikembalikan ke --all tanpa alasan kuat.
     log "Download source PHP $php_version + FrankenPHP + extension terpilih (bisa beberapa menit)..."
-    if ! ./spc download php-src,frankenphp --for-extensions="$extensions" --with-php="$php_version" >> "$install_log" 2>&1; then
+    if ! run_logged ./spc download php-src,frankenphp --for-extensions="$extensions" --with-php="$php_version"; then
         log "Download source gagal - cek log di atas (bisa karena versi PHP $php_version tidak didukung static-php-cli $spc_version, koneksi ke GitHub, atau resource server - lihat detail error tepat di atas baris ini)."
         exit 1
     fi
 
     log "Compile PHP $php_version (static, ZTS) + FrankenPHP dengan extension: $extensions ..."
     log "Ini bagian paling lama (15-40+ menit tergantung CPU) - tunggu sampai muncul 'Instalasi selesai' atau pesan gagal."
-    if ! ./spc build "$extensions" --build-frankenphp --enable-zts >> "$install_log" 2>&1; then
+    if ! run_logged ./spc build "$extensions" --build-frankenphp --enable-zts; then
         log "Build gagal. Cek log di atas untuk detail error dari spc (biasanya kombinasi extension yang bentrok atau dependency C library yang belum lengkap)."
         exit 1
     fi
@@ -335,6 +351,7 @@ action=$1
 arg2=$2
 if [ "$action" == "install" ]; then
     : > "$install_log"
+    : > "$panel_exec_log"
     if [ "$arg2" == "custom" ]; then
         Build_frankenphp_source "$3" "$4" "$5"
     else
