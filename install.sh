@@ -119,6 +119,17 @@ Build_frankenphp_source(){
     log "Cek & pasang dependency tambahan yang diminta spc (spc doctor --auto-fix)..."
     run_logged ./spc doctor --auto-fix
 
+    # SAPI frankenphp butuh toolchain Go + xcaddy buat compile Caddy (dasar FrankenPHP) - kalau
+    # belum ada, build gagal telat di awal step compile dgn pesan "requires the go-xcaddy package"
+    # (padahal proses download source udah selesai duluan, buang2 waktu). Ini step wajib terpisah
+    # dari `spc doctor`, dicek langsung ke urutan resmi static-php-cli sendiri (CraftCommand.php:
+    # doctor -> install-pkg go-xcaddy -> download -> build).
+    log "Memasang toolchain Go + xcaddy (dibutuhkan buat compile FrankenPHP/Caddy)..."
+    if ! run_logged ./spc install-pkg go-xcaddy; then
+        log "Gagal memasang go-xcaddy - cek log di atas (biasanya masalah koneksi ke GitHub/Go module proxy)."
+        exit 1
+    fi
+
     # PENTING - php-src & frankenphp HARUS disebut eksplisit di argumen "sources" (bukan cuma
     # --for-extensions, yang cuma menghitung source utk extension+lib terpilih, TIDAK termasuk
     # source PHP itu sendiri maupun FrankenPHP) - dicek langsung ke source DownloadCommand.php
