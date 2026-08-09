@@ -1903,13 +1903,13 @@
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('domain') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_domain" placeholder="contoh.com" value="' + fpEsc(domainVal) + '" ' + (isEdit ? 'readonly' : '') + '></div></div>' +
 			'<div class="fp-form-row" style="align-items:flex-start;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('mode') + '</div><div class="fp-form-field"><div class="fp-mode-picker" id="fp_mode_picker">' + modeCards + '</div><input type="hidden" id="fp_s_mode" value="' + mode + '"></div></div>' +
 			'<div class="fp-form-row fp_row_root"><div class="fp-form-label">' + fpT('document_root') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_root" placeholder="' + fpT('doc_root_auto_placeholder') + '" value="' + fpEsc(rootVal) + '"></div></div>' +
+			workerSection +
 			'<div class="fp_row_backends"><div class="fp-form-row"><div class="fp-form-label">' + fpT('backend_servers') + '</div><div class="fp-form-field"><textarea class="fp-textarea" id="fp_s_backends" placeholder="' + fpT('backends_placeholder') + '">' + fpEsc(backendsVal) + '</textarea></div></div>' +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('lb_policy') + '</div><div class="fp-form-field"><select class="fp-select" id="fp_s_policy">' +
 			policies.map(function (p) { return '<option value="' + p + '"' + (policyVal === p ? ' selected' : '') + '>' + p + '</option>'; }).join('') +
 			'</select></div></div>' +
 			lbSection + '</div>' +
 			'<div class="fp_section_waf_wrap">' + wafSection + '</div>' +
-			workerSection +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('force_https') + '</div><div class="fp-form-field"><label class="fp-switch"><input type="checkbox" id="fp_s_force_https" ' + (forceHttpsVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label>' +
 			'<div class="fp-hint" style="margin-top:4px;">' + fpT('force_https_hint') + '</div></div></div>' +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('email_optional') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_email" placeholder="' + fpT('email_placeholder') + '" value="' + fpEsc(emailVal) + '"></div></div>' +
