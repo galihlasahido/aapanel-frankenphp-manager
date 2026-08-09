@@ -143,6 +143,20 @@ Build_frankenphp_source(){
         exit 1
     fi
 
+    # Bug kompatibilitas swoole (bundled curl coroutine hook) vs OpenSSL modern: kalau extension
+    # curl+swoole dipilih bareng DAN build pakai ZTS (selalu kita pakai), swoole nyalain ulang
+    # kode lawas thread-safety-lock buat OpenSSL <1.1.0 (PHP_CURL_NEED_OPENSSL_TSL, di file
+    # ext/swoole/thirdparty/php/curl/interface.cc) yang gagal compile di g++ modern ("converting
+    # to bool from std::nullptr_t requires direct-initialization") - dicek langsung ke source:
+    # macro itu cuma dipicu kalau ZTS aktif + curl versi lama terdeteksi, TIDAK relevan lagi buat
+    # OpenSSL 1.1.0+ (locking callback API sudah jadi no-op di sana), jadi aman dihapus definisinya
+    # daripada patch OpenSSL/curl detection-nya sendiri.
+    tsl_hook_file="$build_dir/source/php-src/ext/swoole/thirdparty/php/curl/interface.cc"
+    if [ -f "$tsl_hook_file" ]; then
+        log "Patch bug kompatibilitas swoole+curl vs OpenSSL modern (PHP_CURL_NEED_OPENSSL_TSL)..."
+        sed -i '/^#define PHP_CURL_NEED_OPENSSL_TSL$/d' "$tsl_hook_file"
+    fi
+
     log "Compile PHP $php_version (static, ZTS) + FrankenPHP dengan extension: $extensions ..."
     log "Ini bagian paling lama (15-40+ menit tergantung CPU) - tunggu sampai muncul 'Instalasi selesai' atau pesan gagal."
     if ! run_logged ./spc build "$extensions" --build-frankenphp --enable-zts; then
