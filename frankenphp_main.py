@@ -613,6 +613,30 @@ class frankenphp_main:
     __spc_default_version = "2.8.5"
     __spc_version_re = re.compile(r'^\d+\.\d+\.\d+$')
     __spc_config_file = __install_dir + "/data/spc-extensions.json"
+    __github_token_file = __install_dir + "/data/.github_token"
+
+    def GetGithubTokenStatus(self, get):
+        return {"status": True, "set": os.path.exists(self.__github_token_file)}
+
+    def SetGithubToken(self, get):
+        """Token GitHub (Personal Access Token, tidak perlu scope apa pun) - dipakai
+        static-php-cli saat build custom supaya panggilan ke api.github.com pakai kuota
+        akun (5000/jam) bukan kuota anonim per-IP (cuma 60/jam) - build custom bisa manggil
+        api.github.com puluhan kali (cek rilis tiap source), gampang kena 403 rate-limit
+        tanpa token ini, apalagi kalau IP server dipakai bareng (cloud/NAT). Write-only:
+        token tidak pernah dikirim balik ke frontend setelah disimpan."""
+        token = get.token.strip() if ('token' in get and get.token.strip()) else ""
+        if len(token) < 10:
+            return public.ReturnMsg(False, "Token tidak valid (terlalu pendek)")
+        os.makedirs(os.path.dirname(self.__github_token_file), exist_ok=True)
+        public.WriteFile(self.__github_token_file, token)
+        os.chmod(self.__github_token_file, 0o600)
+        return public.ReturnMsg(True, "Token GitHub disimpan")
+
+    def RemoveGithubToken(self, get):
+        if os.path.exists(self.__github_token_file):
+            os.remove(self.__github_token_file)
+        return public.ReturnMsg(True, "Token GitHub dihapus")
 
     def _get_spc_config(self):
         """Config extension static-php-cli (versi + daftar extension) - disimpan di file,

@@ -88,6 +88,18 @@ Build_frankenphp_source(){
     chmod +x spc
     ./spc --version >> "$install_log" 2>&1
 
+    # spc manggil api.github.com puluhan kali (cek rilis tiap source) - tanpa token, limitnya
+    # cuma 60 request/jam PER-IP (gampang kena 403, apalagi kalau IP server dipakai bareng),
+    # dengan token naik jadi 5000/jam. Token disimpan lewat menu plugin (opsional).
+    token_file="$install_dir/data/.github_token"
+    if [ -f "$token_file" ]; then
+        export GITHUB_TOKEN
+        GITHUB_TOKEN=$(cat "$token_file")
+        log "GitHub token ditemukan, dipakai untuk menaikkan rate limit API GitHub saat download source."
+    else
+        log "Tidak ada GitHub token tersimpan - kalau download source gagal karena 403/rate-limit, set token lewat menu plugin lalu coba lagi."
+    fi
+
     log "Cek & pasang dependency tambahan yang diminta spc (spc doctor --auto-fix)..."
     ./spc doctor --auto-fix >> "$install_log" 2>&1
 

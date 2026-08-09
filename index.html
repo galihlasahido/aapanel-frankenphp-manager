@@ -284,6 +284,14 @@
 			'<button type="button" class="btn btn-default btn-sm" id="fp_ext_none">Kosongkan</button>' +
 			'</div>' +
 			'<div id="fp_ext_checks" class="fp-method-checks" style="max-height:220px;overflow-y:auto;border:1px solid #eceff2;border-radius:6px;padding:8px;"><div class="fp-hint">Memuat daftar extension...</div></div>' +
+			'<div class="fp-form-label" style="margin-top:10px;margin-bottom:4px;">GitHub Token (opsional, sangat disarankan)</div>' +
+			'<div class="fp-hint" style="margin-bottom:6px;">Proses build manggil api.github.com puluhan kali (cek rilis tiap source) - tanpa token gampang kena <span class="fp-mono">403 rate-limit</span> (cuma 60 request/jam per-IP) dan build gagal di tengah jalan. Buat token di <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a> (tidak perlu scope apa pun, "no scope" saja cukup) - naikkan limit jadi 5000/jam. Tersimpan di server ini saja, tidak pernah dikirim balik ke browser.</div>' +
+			'<div style="margin-bottom:10px;">' +
+			'<span class="fp-hint">Status: <b id="fp_gh_token_status">...</b></span> ' +
+			'<input class="fp-input" id="fp_gh_token_input" type="password" placeholder="ghp_xxxxxxxxxxxx" style="max-width:220px;display:inline-block;"> ' +
+			'<button type="button" class="btn btn-default btn-sm" id="fp_gh_token_save">Simpan</button> ' +
+			'<button type="button" class="btn btn-default btn-sm" id="fp_gh_token_remove">Hapus</button>' +
+			'</div>' +
 			'<div class="fp-hint" style="margin-top:6px;">Build dari source: compile PHP+FrankenPHP langsung di server ini (static-php-cli). Bisa makan <b>15-40+ menit</b> dan CPU/RAM/disk terpakai penuh selama proses &mdash; jangan tutup halaman ini sampai selesai.</div>' +
 			'</div>' +
 			'</div>' +
@@ -296,6 +304,21 @@
 			var isCustom = $(this).val() === 'custom';
 			$('#fp_install_custom_box').toggle(isCustom);
 			if (isCustom && !fpSpcExtCache) fpLoadSpcExtensions();
+			if (isCustom) fpLoadGithubTokenStatus();
+		});
+		$('#fp_gh_token_save').click(function () {
+			var token = $('#fp_gh_token_input').val().trim();
+			if (!token) { layer.msg('Isi token dulu', { icon: 2 }); return; }
+			fpAjaxPost('SetGithubToken', { token: token }, function (r) {
+				layer.msg(r.msg, { icon: r.status ? 1 : 2 });
+				if (r.status) { $('#fp_gh_token_input').val(''); fpLoadGithubTokenStatus(); }
+			});
+		});
+		$('#fp_gh_token_remove').click(function () {
+			fpAjaxPost('RemoveGithubToken', {}, function (r) {
+				layer.msg(r.msg, { icon: r.status ? 1 : 2 });
+				fpLoadGithubTokenStatus();
+			});
 		});
 		$('#fp_ext_recommended').click(function () {
 			var rec = (fpSpcExtCache && fpSpcExtCache.recommended) || [];
@@ -342,6 +365,12 @@
 		});
 	}
 
+	function fpLoadGithubTokenStatus() {
+		fpAjaxGet('GetGithubTokenStatus', function (r) {
+			$('#fp_gh_token_status').text(r.status && r.set ? 'Tersimpan' : 'Belum diset');
+		});
+	}
+
 	function fpStartInstall() {
 		var phpVersion = $('#fp_install_php_version').val() || 'latest';
 		var data = { php_version: phpVersion };
@@ -362,6 +391,9 @@
 		fpAjaxPost('Install', data, function (r) {
 			if (!r.status) { layer.msg(r.msg, { icon: 2 }); $('#fp_install_btn').prop('disabled', false).text('Install FrankenPHP'); return; }
 			fpPollInstall();
+			// Langsung buka panel Task bawaan aaPanel (fungsi global dari public.js) supaya
+			// progress-nya kelihatan jelas, tidak perlu cari-cari ikon Task manual.
+			if (typeof messagebox === 'function') messagebox();
 		});
 	}
 
