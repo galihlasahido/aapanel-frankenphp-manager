@@ -113,6 +113,8 @@ class frankenphp_main:
             "worker_env_format_invalid": "Invalid worker env format (must be KEY=VALUE): {value}",
             "worker_env_key_invalid": "Invalid env var name (letters/numbers/underscore, cannot start with a number): {value}",
             "worker_env_value_empty": "Env var {key} value cannot be empty",
+            "worker_type_unknown": "Unknown worker type: {value}",
+            "worker_port_unavailable": "No free port available for the standalone worker (range 9100-9999 all in use)",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
             "ip_cidr_invalid": "Invalid IP/CIDR format: {value}",
             "http_method_unsupported": "Unsupported HTTP method: {value}",
@@ -209,6 +211,8 @@ class frankenphp_main:
             "worker_env_format_invalid": "Format env worker tidak valid (harus KEY=VALUE): {value}",
             "worker_env_key_invalid": "Nama env var tidak valid (huruf/angka/underscore, tidak boleh diawali angka): {value}",
             "worker_env_value_empty": "Value env var {key} tidak boleh kosong",
+            "worker_type_unknown": "Tipe worker tidak dikenal: {value}",
+            "worker_port_unavailable": "Tidak ada port kosong buat worker standalone (range 9100-9999 semua terpakai)",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
             "ip_cidr_invalid": "Format IP/CIDR tidak valid: {value}",
             "http_method_unsupported": "Method HTTP tidak didukung: {value}",
@@ -281,6 +285,8 @@ class frankenphp_main:
     __upload_filter_mime_re = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.+-]{0,60}/[a-zA-Z0-9][a-zA-Z0-9.+-]{0,60}$')
     __upload_filter_modes = ("blacklist", "whitelist")
     __worker_env_key_re = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+    __worker_types = ("embedded", "standalone")
+    __worker_port_range = (9100, 9999)
 
     def _parse_backends(self, text):
         if not text:
@@ -356,6 +362,90 @@ class frankenphp_main:
                 raise ValueError(self._t("worker_env_value_empty", key=key))
             env[key] = value
         return env
+
+    def _find_free_worker_port(self, all_sites, prefer=None, exclude_domain=None):
+        """Cari port kosong buat worker standalone (proses frankenphp terpisah per-domain).
+        Port yang sudah dipakai domain LAIN (worker_type=standalone) dihindari dari config kita
+        sendiri, DAN dicek beneran nganggur di OS (ss -tln) - dua-duanya perlu supaya tidak
+        bentrok baik dengan domain lain di plugin ini maupun proses non-plugin yang kebetulan
+        pakai port itu. `prefer` = port lama yang mau dipertahankan kalau masih valid (supaya
+        systemd unit/port yang sama tidak berubah tiap kali domain itu disave ulang - lebih
+        stabil buat firewall/monitoring eksternal kalau ada yang mengacu ke port tsb).
+        `exclude_domain` = domain yang lagi diedit sendiri, port miliknya sendiri jangan
+        dianggap "sudah dipakai domain lain"."""
+        used = set()
+        for s in all_sites:
+            if s.get("domain") == exclude_domain:
+                continue
+            if s.get("worker_type") == "standalone" and s.get("worker_port"):
+                used.add(int(s["worker_port"]))
+
+        def is_free(port):
+            if port in used:
+                return False
+            check = public.ExecShell("ss -tln 2>/dev/null | grep ':%s '" % port)
+            return not (check and check[0] and str(port) in check[0])
+
+        if prefer and is_free(int(prefer)):
+            return int(prefer)
+        start, end = self.__worker_port_range
+        for port in range(start, end + 1):
+            if is_free(port):
+                return port
+        return None
+
+    def _worker_unit_name(self, domain):
+        # domain sudah divalidasi via __domain_re (huruf/angka/dash/titik) - aman dipakai
+        # langsung sebagai bagian nama unit systemd.
+        return "frankenphp-worker-%s.service" % domain
+
+    def _apply_worker_unit(self, site):
+        """Generate (atau update) + enable+restart systemd unit buat worker standalone - proses
+        TERPISAH dari FrankenPHP utama (`frankenphp php-server --worker=...`, listen di
+        127.0.0.1:<port> lokal saja, TIDAK public), jadi restart/deploy domain ini tidak ikut
+        me-restart proses FrankenPHP utama yang dipakai bareng domain lain. Domain publiknya
+        sendiri di-reverse_proxy ke port ini (lihat _site_block). Restart=always + enable bikin
+        proses ini otomatis pulih kalau crash maupun kalau server reboot - tanpa perlu
+        supervisord terpisah, systemd yang sudah ada di server cukup."""
+        domain = site["domain"]
+        unit_name = self._worker_unit_name(domain)
+        unit_path = "/etc/systemd/system/%s" % unit_name
+        # PENTING - systemd `Environment=` motong value di spasi pertama kalau tidak di-quote
+        # (KEY=VALUE utuh harus dibungkus tanda kutip, bukan cuma VALUE-nya) - kena sendiri
+        # waktu testing (`Environment=FOO=bar baz` diam-diam jadi cuma `FOO=bar`, " baz" hilang).
+        env_lines = "".join(
+            'Environment="%s=%s"\n' % (k, v.replace("\\", "\\\\").replace('"', '\\"'))
+            for k, v in (site.get("worker_env") or {}).items()
+        )
+        content = (
+            "[Unit]\n"
+            "Description=FrankenPHP worker standalone untuk %s (dikelola FrankenPHP Manager - jangan diedit manual)\n"
+            "After=network.target frankenphp.service\n\n"
+            "[Service]\n"
+            "Type=simple\n"
+            "User=www\n"
+            "WorkingDirectory=%s\n"
+            "%s"
+            "ExecStart=%s php-server --root=%s --worker=%s,%s --listen=127.0.0.1:%s\n"
+            "Restart=always\n"
+            "RestartSec=2\n"
+            "LimitNOFILE=1048576\n\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n"
+        ) % (
+            domain, site["root"], env_lines, self.__bin, site["root"],
+            site["worker_script"], site.get("worker_num", 4), site["worker_port"]
+        )
+        public.WriteFile(unit_path, content)
+        public.ExecShell("systemctl daemon-reload")
+        public.ExecShell("systemctl enable %s >/dev/null 2>&1" % unit_name)
+        public.ExecShell("systemctl restart %s" % unit_name)
+
+    def _remove_worker_unit(self, domain):
+        unit_name = self._worker_unit_name(domain)
+        public.ExecShell("systemctl disable --now %s >/dev/null 2>&1" % unit_name)
+        public.ExecShell("rm -f /etc/systemd/system/%s" % unit_name)
+        public.ExecShell("systemctl daemon-reload")
 
     def _cpu_percent(self):
         def read():
@@ -764,10 +854,17 @@ class frankenphp_main:
                     "\t\thealth_timeout 5s\n"
                 ) % (health_uri, health_interval)
             body += "\treverse_proxy %s {\n%s\t}\n" % (" ".join(backends), rp_body)
+        elif s.get("worker_enabled") and s.get("worker_type") == "standalone" and s.get("worker_port"):
+            # Worker standalone: proses `frankenphp php-server --worker=...` TERPISAH dikelola
+            # systemd unit sendiri (lihat _apply_worker_unit), listen di 127.0.0.1:<port> lokal
+            # saja - domain publik cuma reverse_proxy ke situ. Beda dari embedded: restart/deploy
+            # domain ini TIDAK ikut me-restart proses FrankenPHP utama yang dipakai domain lain.
+            body += "\treverse_proxy 127.0.0.1:%s\n" % s["worker_port"]
         else:
             if s.get("worker_enabled") and s.get("worker_script"):
-                # Worker mode: aplikasi tetap "hidup" di memory antar-request (tidak boot ulang
-                # tiap request kayak mode classic) - butuh worker script yang implementasi
+                # Worker embedded: worker jalan DI DALAM proses FrankenPHP utama yang dipakai
+                # bareng domain lain - aplikasi tetap "hidup" di memory antar-request (tidak boot
+                # ulang tiap request kayak mode classic), butuh worker script yang implementasi
                 # protokol worker FrankenPHP sendiri (mis. Laravel Octane nyediain
                 # vendor/laravel/octane/bin/frankenphp-worker.php siap pakai).
                 #
@@ -1083,6 +1180,12 @@ class frankenphp_main:
         return {"log": content, "finished": finished, "installed": self._is_installed()}
 
     def Uninstall(self, get):
+        # Bersihkan systemd unit worker standalone per-domain juga - install.sh sendiri cuma
+        # tahu cara uninstall proses FrankenPHP utama, tidak tahu-menahu soal unit dinamis yang
+        # dibuat per-domain oleh _apply_worker_unit().
+        for s in self._get_config().get("sites", []):
+            if s.get("worker_type") == "standalone":
+                self._remove_worker_unit(s["domain"])
         public.ExecShell("bash %s/install.sh uninstall" % self.__plugin_dir)
         return public.ReturnMsg(True, self._t("uninstalled"))
 
@@ -1150,7 +1253,7 @@ class frankenphp_main:
         result["status"] = True
         return result
 
-    def _build_site_fields(self, get, domain, default_root, existing=None):
+    def _build_site_fields(self, get, domain, default_root, existing=None, all_sites=None):
         """Validasi field form (mode, root, backends, lb_policy, email) -> (dict, None) atau (None, error_msg)"""
         mode = get.mode.strip() if ('mode' in get and get.mode.strip()) else "php"
         if mode not in self.__modes:
@@ -1301,6 +1404,8 @@ class frankenphp_main:
             worker_enabled = str(get.worker_enabled).strip() == "1" if 'worker_enabled' in get else False
             worker_script = ""
             worker_num = 4
+            worker_type = "embedded"
+            worker_port = None
             if worker_enabled:
                 worker_script = get.worker_script.strip() if ('worker_script' in get and get.worker_script.strip()) else ""
                 if not worker_script:
@@ -1317,6 +1422,15 @@ class frankenphp_main:
                     return None, self._t("worker_num_must_be_number")
                 if worker_num < 1 or worker_num > 64:
                     return None, self._t("worker_num_range")
+
+                worker_type = get.worker_type.strip() if ('worker_type' in get and get.worker_type.strip()) else "embedded"
+                if worker_type not in self.__worker_types:
+                    return None, self._t("worker_type_unknown", value=worker_type)
+                if worker_type == "standalone":
+                    reuse_port = existing.get("worker_port") if (existing and existing.get("worker_type") == "standalone") else None
+                    worker_port = self._find_free_worker_port(all_sites or [], prefer=reuse_port, exclude_domain=domain)
+                    if not worker_port:
+                        return None, self._t("worker_port_unavailable")
             try:
                 worker_env = self._parse_worker_env(get.worker_env if 'worker_env' in get else "")
             except ValueError as e:
@@ -1325,6 +1439,8 @@ class frankenphp_main:
             site["worker_script"] = worker_script
             site["worker_num"] = worker_num
             site["worker_env"] = worker_env
+            site["worker_type"] = worker_type
+            site["worker_port"] = worker_port
 
         return site, None
 
@@ -1340,7 +1456,7 @@ class frankenphp_main:
         if any(s["domain"] == domain for s in sites):
             return public.ReturnMsg(False, self._t("domain_already_registered", domain=domain))
 
-        site, err = self._build_site_fields(get, domain, self.__install_dir + "/www/" + domain)
+        site, err = self._build_site_fields(get, domain, self.__install_dir + "/www/" + domain, all_sites=sites)
         if err:
             return public.ReturnMsg(False, err)
 
@@ -1348,6 +1464,8 @@ class frankenphp_main:
         ok, err = self._apply_caddyfile(candidate_sites, cfg.get("port", 8080), cfg.get("root"))
         if not ok:
             return public.ReturnMsg(False, err)
+        if site.get("worker_type") == "standalone":
+            self._apply_worker_unit(site)
         cfg["sites"] = candidate_sites
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
@@ -1367,7 +1485,8 @@ class frankenphp_main:
         if idx is None:
             return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
 
-        site, err = self._build_site_fields(get, domain, self.__install_dir + "/www/" + domain, existing=sites[idx])
+        old_site = sites[idx]
+        site, err = self._build_site_fields(get, domain, self.__install_dir + "/www/" + domain, existing=old_site, all_sites=sites)
         if err:
             return public.ReturnMsg(False, err)
 
@@ -1376,6 +1495,12 @@ class frankenphp_main:
         ok, err = self._apply_caddyfile(candidate_sites, cfg.get("port", 8080), cfg.get("root"))
         if not ok:
             return public.ReturnMsg(False, err)
+        was_standalone = old_site.get("worker_type") == "standalone"
+        now_standalone = site.get("worker_type") == "standalone"
+        if was_standalone and not now_standalone:
+            self._remove_worker_unit(domain)
+        elif now_standalone:
+            self._apply_worker_unit(site)
         cfg["sites"] = candidate_sites
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
@@ -1390,6 +1515,7 @@ class frankenphp_main:
         domain = get.domain.strip() if 'domain' in get else ""
         cfg = self._get_config()
         sites = cfg.get("sites", [])
+        old_site = next((s for s in sites if s["domain"] == domain), None)
         new_sites = [s for s in sites if s["domain"] != domain]
         if len(new_sites) == len(sites):
             return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
@@ -1397,6 +1523,8 @@ class frankenphp_main:
         ok, err = self._apply_caddyfile(new_sites, cfg.get("port", 8080), cfg.get("root"))
         if not ok:
             return public.ReturnMsg(False, err)
+        if old_site and old_site.get("worker_type") == "standalone":
+            self._remove_worker_unit(domain)
         cfg["sites"] = new_sites
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
