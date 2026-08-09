@@ -110,6 +110,9 @@ class frankenphp_main:
             "worker_script_not_found": "Worker script file not found: {path}",
             "worker_num_must_be_number": "Number of workers must be a number",
             "worker_num_range": "Number of workers must be 1-64",
+            "worker_env_format_invalid": "Invalid worker env format (must be KEY=VALUE): {value}",
+            "worker_env_key_invalid": "Invalid env var name (letters/numbers/underscore, cannot start with a number): {value}",
+            "worker_env_value_empty": "Env var {key} value cannot be empty",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
             "ip_cidr_invalid": "Invalid IP/CIDR format: {value}",
             "http_method_unsupported": "Unsupported HTTP method: {value}",
@@ -203,6 +206,9 @@ class frankenphp_main:
             "worker_script_not_found": "File worker script tidak ditemukan: {path}",
             "worker_num_must_be_number": "Jumlah worker harus angka",
             "worker_num_range": "Jumlah worker harus 1-64",
+            "worker_env_format_invalid": "Format env worker tidak valid (harus KEY=VALUE): {value}",
+            "worker_env_key_invalid": "Nama env var tidak valid (huruf/angka/underscore, tidak boleh diawali angka): {value}",
+            "worker_env_value_empty": "Value env var {key} tidak boleh kosong",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
             "ip_cidr_invalid": "Format IP/CIDR tidak valid: {value}",
             "http_method_unsupported": "Method HTTP tidak didukung: {value}",
@@ -274,6 +280,7 @@ class frankenphp_main:
     __upload_filter_ext_re = re.compile(r'^[a-zA-Z0-9]{1,20}$')
     __upload_filter_mime_re = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9.+-]{0,60}/[a-zA-Z0-9][a-zA-Z0-9.+-]{0,60}$')
     __upload_filter_modes = ("blacklist", "whitelist")
+    __worker_env_key_re = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
     def _parse_backends(self, text):
         if not text:
@@ -324,6 +331,31 @@ class frankenphp_main:
             else:
                 raise ValueError(self._t("upload_filter_entry_invalid", value=p))
         return sorted(set(out))
+
+    def _parse_worker_env(self, text):
+        """Satu baris = satu env var, format KEY=VALUE (mis. APP_BASE_PATH=/www/wwwroot/x) -
+        dibutuhkan worker script tertentu (mis. Laravel Octane: bootstrap.php baca APP_BASE_PATH
+        dari env, biasanya otomatis di-set oleh `php artisan octane:frankenphp`, tapi TIDAK
+        pernah ke-set kalau worker dipanggil langsung lewat directive `worker` Caddyfile murni
+        - makanya field ini perlu ada di plugin, generik buat worker script apa pun)."""
+        if not text:
+            return {}
+        env = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if '=' not in line:
+                raise ValueError(self._t("worker_env_format_invalid", value=line))
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+            if not self.__worker_env_key_re.match(key):
+                raise ValueError(self._t("worker_env_key_invalid", value=key))
+            if not value:
+                raise ValueError(self._t("worker_env_value_empty", key=key))
+            env[key] = value
+        return env
 
     def _cpu_percent(self):
         def read():
@@ -681,6 +713,13 @@ class frankenphp_main:
             "\t}\n"
         )
 
+    def _quote_caddy_arg(self, value):
+        """Bungkus value jadi token Caddyfile yang aman (quoted, escape backslash+quote) -
+        dipakai buat argumen directive yang isinya bisa mengandung spasi/karakter apa pun
+        (mis. value env var worker mode), supaya tidak memecah directive-nya."""
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return '"%s"' % escaped
+
     def _site_block(self, s):
         mode = s.get("mode", "php")
         body = "\theader -Server\n"
@@ -731,14 +770,26 @@ class frankenphp_main:
                 # tiap request kayak mode classic) - butuh worker script yang implementasi
                 # protokol worker FrankenPHP sendiri (mis. Laravel Octane nyediain
                 # vendor/laravel/octane/bin/frankenphp-worker.php siap pakai).
+                #
+                # env vars (mis. APP_BASE_PATH buat Laravel Octane) WAJIB di-set eksplisit di
+                # sini - worker script Octane butuh APP_BASE_PATH dari env, yang normalnya
+                # otomatis di-set oleh `php artisan octane:frankenphp`, tapi TIDAK PERNAH ke-set
+                # kalau worker dipanggil langsung lewat directive `worker` Caddyfile murni
+                # (kejadian nyata: web mati total - "Cannot find application base path" - baru
+                # ketahuan setelah worker mode diaktifkan tanpa env ini).
+                env_lines = "".join(
+                    "\t\t\tenv %s %s\n" % (k, self._quote_caddy_arg(v))
+                    for k, v in (s.get("worker_env") or {}).items()
+                )
                 php_server_block = (
                     "\tphp_server {\n"
                     "\t\tworker {\n"
                     "\t\t\tfile %s\n"
                     "\t\t\tnum %s\n"
+                    "%s"
                     "\t\t}\n"
                     "\t}\n"
-                ) % (s["worker_script"], s.get("worker_num", 4))
+                ) % (s["worker_script"], s.get("worker_num", 4), env_lines)
             else:
                 php_server_block = "\tphp_server\n"
             body += "\troot * %s\n\tencode gzip\n%s" % (s["root"], php_server_block)
@@ -1266,9 +1317,14 @@ class frankenphp_main:
                     return None, self._t("worker_num_must_be_number")
                 if worker_num < 1 or worker_num > 64:
                     return None, self._t("worker_num_range")
+            try:
+                worker_env = self._parse_worker_env(get.worker_env if 'worker_env' in get else "")
+            except ValueError as e:
+                return None, str(e)
             site["worker_enabled"] = worker_enabled
             site["worker_script"] = worker_script
             site["worker_num"] = worker_num
+            site["worker_env"] = worker_env
 
         return site, None
 

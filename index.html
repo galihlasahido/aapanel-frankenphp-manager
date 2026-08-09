@@ -252,6 +252,8 @@
 			worker_mode_hint: 'Keeps the app booted in memory between requests (no reboot per request) - much faster, but the app must be "worker-safe" (avoid leftover state between requests). Needs a worker script implementing FrankenPHP\'s worker protocol - Laravel Octane provides one ready to use at vendor/laravel/octane/bin/frankenphp-worker.php.',
 			worker_script_label: 'Worker script path', worker_script_placeholder: 'e.g. /www/wwwroot/example.com/vendor/laravel/octane/bin/frankenphp-worker.php',
 			worker_num_label: 'Number of workers', worker_num_hint: 'Number of persistent PHP processes handling requests (a common starting point is the number of CPU cores)',
+			worker_env_label: 'Environment variables (optional)', worker_env_placeholder: 'KEY=VALUE, one per line, e.g.:\nAPP_BASE_PATH=/www/wwwroot/example.com',
+			worker_env_hint: 'For Laravel Octane, APP_BASE_PATH is required (points to the Laravel project root, NOT the public/ folder) - normally set automatically by "php artisan octane:frankenphp", but never set when the worker is invoked directly via this Caddyfile directive. Without it the worker fails to start with "Cannot find application base path" and the whole site goes down.',
 			gh_token_label: 'GitHub Token (optional, highly recommended)', http_method: 'HTTP Method',
 			top_pages: 'Most Visited Pages', health_check_path: 'Health check path', top_ips: 'Top IPs',
 			ip_whitelist_blacklist: 'IP Whitelist & Blacklist', unique_attacker_ips: 'Unique attacker IPs',
@@ -423,6 +425,8 @@
 			worker_mode_hint: 'Aplikasi tetap "hidup" di memory antar-request (tidak boot ulang tiap request) - jauh lebih cepat, tapi aplikasi harus "worker-safe" (hindari state nyangkut antar-request). Butuh worker script yang implementasi protokol worker FrankenPHP - Laravel Octane nyediain yang siap pakai di vendor/laravel/octane/bin/frankenphp-worker.php.',
 			worker_script_label: 'Path worker script', worker_script_placeholder: 'mis. /www/wwwroot/example.com/vendor/laravel/octane/bin/frankenphp-worker.php',
 			worker_num_label: 'Jumlah worker', worker_num_hint: 'Jumlah proses PHP persisten yang menangani request (titik awal umum: jumlah core CPU)',
+			worker_env_label: 'Environment variables (opsional)', worker_env_placeholder: 'KEY=VALUE, satu per baris, mis.:\nAPP_BASE_PATH=/www/wwwroot/example.com',
+			worker_env_hint: 'Buat Laravel Octane, APP_BASE_PATH wajib diisi (arahkan ke root project Laravel, BUKAN folder public/) - normalnya otomatis di-set oleh "php artisan octane:frankenphp", tapi tidak pernah ke-set kalau worker dipanggil langsung lewat directive Caddyfile ini. Tanpa ini worker gagal start dengan pesan "Cannot find application base path" dan seluruh domain jadi down.',
 			gh_token_label: 'GitHub Token (opsional, sangat disarankan)', http_method: 'HTTP Method',
 			top_pages: 'Halaman Paling Sering Diakses', health_check_path: 'Health check path', top_ips: 'IP Teratas',
 			ip_whitelist_blacklist: 'IP Whitelist &amp; Blacklist', unique_attacker_ips: 'IP penyerang unik',
@@ -1781,6 +1785,7 @@
 		var workerEnabledVal = site ? !!site.worker_enabled : false;
 		var workerScriptVal = site ? (site.worker_script || '') : '';
 		var workerNumVal = site ? (site.worker_num || 4) : 4;
+		var workerEnvVal = site && site.worker_env ? Object.keys(site.worker_env).map(function (k) { return k + '=' + site.worker_env[k]; }).join('\n') : '';
 		var wafEngineVal = site ? (site.waf_engine || 'on') : 'on';
 		var wafParanoiaVal = site ? (site.waf_paranoia || 1) : 1;
 		var wafThresholdVal = site ? (site.waf_threshold || 5) : 5;
@@ -1872,6 +1877,8 @@
 			'<div class="fp-hint" style="margin-top:4px;margin-bottom:8px;">' + fpT('worker_mode_hint') + '</div>' +
 			'<div class="fp-subrow" style="align-items:flex-start;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('worker_script_label') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_worker_script" placeholder="' + fpT('worker_script_placeholder') + '" value="' + fpEsc(workerScriptVal) + '"></div></div>' +
 			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('worker_num_label') + '</div><input class="fp-input" id="fp_s_worker_num" type="text" value="' + fpEsc(workerNumVal) + '" style="max-width:100px;"> <span class="fp-hint">' + fpT('worker_num_hint') + '</span></div>' +
+			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('worker_env_label') + '</div><div class="fp-form-field"><textarea class="fp-textarea" id="fp_s_worker_env" placeholder="' + fpT('worker_env_placeholder') + '">' + fpEsc(workerEnvVal) + '</textarea>' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('worker_env_hint') + '</div></div></div>' +
 			'</div>';
 
 		var content = '' +
@@ -1962,6 +1969,7 @@
 			data.worker_enabled = $('#fp_s_worker_enabled').is(':checked') ? '1' : '0';
 			data.worker_script = $('#fp_s_worker_script').val();
 			data.worker_num = $('#fp_s_worker_num').val();
+			data.worker_env = $('#fp_s_worker_env').val();
 		}
 		if (mode === 'waf_php' || mode === 'waf_proxy') {
 			data.waf_engine = $('#fp_s_waf_engine .fp-seg-opt.sel').data('val') || 'on';
