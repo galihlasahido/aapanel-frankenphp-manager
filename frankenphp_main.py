@@ -26,6 +26,214 @@ class frankenphp_main:
     # keputusan retensi tak terbatas utk data agregat) supaya stats.db tidak membengkak tanpa batas.
     __request_log_retention_days = 30
 
+    # ---- i18n ----
+    __lang_file = __install_dir + "/data/lang.json"
+    __langs = ("en", "id")
+
+    __i18n = {
+        "en": {
+            "not_installed": "FrankenPHP is not installed",
+            "already_installed": "FrankenPHP is already installed",
+            "gh_token_too_short": "Invalid token (too short)",
+            "gh_token_saved": "GitHub token saved",
+            "gh_token_removed": "GitHub token removed",
+            "spc_version_invalid": "Invalid static-php-cli version format (e.g. 2.8.5)",
+            "spc_refresh_fetch_failed": "Failed to fetch/parse config/ext.json for version {version} - check whether that release tag actually exists in static-php-cli",
+            "spc_refresh_too_few": "Result has too few extensions ({count}) - the URL/version is likely wrong, not applied",
+            "spc_refresh_success": "Extension list updated to static-php-cli {version} ({count} extensions total)",
+            "spc_refresh_added": ". New: {list}",
+            "spc_refresh_removed": ". Removed: {list}",
+            "more_suffix": " and more",
+            "php_version_invalid": "Invalid PHP version format (e.g. 8.2 or 8.2.28)",
+            "pick_min_1_ext": "Select at least 1 extension",
+            "unknown_extensions": "Unknown extension(s): {list}",
+            "custom_build_started": "Custom build started in the background (can take 15-40+ minutes, static-php-cli {spc_version}) - safe to leave, progress also appears in aaPanel's Task menu",
+            "unknown_php_version_choice": "Unknown PHP version choice: {version}",
+            "internal_release_tag_invalid": "Internal release tag is invalid",
+            "install_started": "Installation started in the background - safe to leave, progress also appears in aaPanel's Task menu",
+            "uninstalled": "FrankenPHP has been removed",
+            "port_invalid": "Invalid port",
+            "port_range": "Port must be between 1-65535",
+            "root_dir_not_found": "Root directory not found: {root}",
+            "port_in_use": "Port {port} is already used by another process",
+            "domain_format_invalid": "Invalid domain format: {domain}",
+            "domain_already_registered": "Domain {domain} is already registered",
+            "domain_not_found": "Domain {domain} not found",
+            "domain_required": "Domain is required",
+            "domain_not_found_or_not_lb": "Domain not found or not in WAF + Load Balancer mode",
+            "cc_waf_autoblock_not_enabled": "Neither CC Defense nor WAF Auto-Block is enabled for this domain",
+            "interval_must_be_number": "Interval must be a number",
+            "interval_unknown": "Unknown interval: {value}",
+            "php_config_read_failed": "Failed to read PHP configuration from the FrankenPHP binary",
+            "memory_limit_invalid": "Invalid memory_limit (e.g. 256M, 1G, -1)",
+            "size_value_invalid": "{key} is invalid (e.g. 20M, 512K)",
+            "seconds_value_invalid": "{key} must be a number (seconds), -1 = unlimited",
+            "seconds_range_invalid": "{key} must be between -1 and 86400",
+            "timezone_invalid": "Invalid date.timezone (e.g. Asia/Jakarta, UTC)",
+            "display_errors_invalid": "display_errors must be On or Off",
+            "no_changes_submitted": "No changes submitted",
+            "wrapper_created_but_failed": "Wrapper created but failed to run: {detail}",
+            "no_ip_over_threshold": "No IP currently exceeds the threshold",
+            "ip_auto_blocked": "{count} IP(s) automatically blocked ({detail})",
+            "no_autoblock_to_clear": "No auto-blocked IPs to clear",
+            "autoblock_cleared": "{count} auto-blocked IP(s) cleared",
+            "log_lines_processed": "{count} new log line(s) processed",
+            "php_cli_wrapper_active": "The 'php' command now runs FrankenPHP's embedded PHP",
+            "mode_unknown": "Unknown mode: {mode}",
+            "email_format_invalid": "Invalid email format: {email}",
+            "waf_engine_unknown": "Unknown WAF engine mode: {engine}",
+            "paranoia_must_be_number": "Paranoia level must be a number",
+            "paranoia_range": "Paranoia level must be 1-4",
+            "anomaly_threshold_must_be_number": "Anomaly threshold must be a number",
+            "anomaly_threshold_range": "Anomaly threshold must be 1-1000",
+            "custom_rule_no_backtick": "Custom rule must not contain a backtick character (`)",
+            "custom_rule_id_reserved": "Rule IDs 900000-900999 are used internally by OWASP CRS & this system (900500) - use a different ID, >= 1000000 recommended, to avoid a silent WAF conflict",
+            "upload_filter_mode_unknown": "Unknown upload filter mode: {mode}",
+            "upload_filter_empty_list": "Upload filter is enabled but the extension/MIME list is still empty",
+            "cc_threshold_must_be_number": "CC Defense: threshold must be a number",
+            "cc_threshold_range": "CC Defense: threshold must be 5-100000",
+            "cc_window_must_be_number": "CC Defense: window must be a number",
+            "cc_window_range": "CC Defense: window must be 5-3600 seconds",
+            "autoblock_threshold_must_be_number": "WAF Auto-Block: threshold must be a number",
+            "autoblock_threshold_range": "WAF Auto-Block: threshold must be 2-1000",
+            "autoblock_window_must_be_number": "WAF Auto-Block: window must be a number",
+            "autoblock_window_range": "WAF Auto-Block: window must be 1-1440 minutes",
+            "lb_backend_required": "At least 1 backend server (host:port format) is required for load balancer mode",
+            "lb_policy_unknown": "Unknown LB policy: {policy}",
+            "health_path_must_start_slash": "Health check path must start with /",
+            "health_interval_must_be_number": "Health check interval must be a number",
+            "health_interval_range": "Health check interval must be 5-3600 seconds",
+            "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
+            "ip_cidr_invalid": "Invalid IP/CIDR format: {value}",
+            "http_method_unsupported": "Unsupported HTTP method: {value}",
+            "upload_filter_entry_invalid": "Invalid entry: '{value}' (must be an extension like 'php' or a MIME type like 'image/jpeg')",
+            "config_invalid_not_applied": "Invalid configuration, changes NOT applied: {detail}",
+            "site_added": "Domain {domain} added. Caddy will automatically request a Let's Encrypt certificate (make sure this domain's DNS already points to the server & ports 80/443 are open).",
+            "site_removed": "Domain {domain} removed from FrankenPHP (files in the document root were not deleted)",
+            "no_log_for_domain": "(no log for this domain yet - it hasn't received any requests)",
+            "config_saved_restarted": "Configuration saved, service restarted",
+            "domain_config_updated": "Configuration for domain {domain} updated & service restarted",
+            "php_config_saved_restarted": "PHP configuration saved, service restarted",
+            "lang_invalid": "Unknown language: {lang}",
+            "lang_saved": "Language saved",
+        },
+        "id": {
+            "not_installed": "FrankenPHP belum terinstall",
+            "already_installed": "FrankenPHP sudah terinstall",
+            "gh_token_too_short": "Token tidak valid (terlalu pendek)",
+            "gh_token_saved": "Token GitHub disimpan",
+            "gh_token_removed": "Token GitHub dihapus",
+            "spc_version_invalid": "Format versi static-php-cli tidak valid (contoh: 2.8.5)",
+            "spc_refresh_fetch_failed": "Gagal mengambil/parse config/ext.json untuk versi {version} - cek apakah tag rilis tsb benar-benar ada di static-php-cli",
+            "spc_refresh_too_few": "Hasil terlalu sedikit ({count} extension) - kemungkinan URL/versi salah, tidak diterapkan",
+            "spc_refresh_success": "Daftar extension diperbarui ke static-php-cli {version} ({count} extension total)",
+            "spc_refresh_added": ". Baru: {list}",
+            "spc_refresh_removed": ". Hilang: {list}",
+            "more_suffix": " dst",
+            "php_version_invalid": "Format versi PHP tidak valid (contoh: 8.2 atau 8.2.28)",
+            "pick_min_1_ext": "Pilih minimal 1 extension",
+            "unknown_extensions": "Extension tidak dikenal: {list}",
+            "custom_build_started": "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli {spc_version}) - aman ditinggal, progress juga muncul di menu Task aaPanel",
+            "unknown_php_version_choice": "Pilihan versi PHP tidak dikenal: {version}",
+            "internal_release_tag_invalid": "Tag rilis internal tidak valid",
+            "install_started": "Instalasi dimulai di background - aman ditinggal, progress juga muncul di menu Task aaPanel",
+            "uninstalled": "FrankenPHP telah dihapus",
+            "port_invalid": "Port tidak valid",
+            "port_range": "Port harus di antara 1-65535",
+            "root_dir_not_found": "Direktori root tidak ditemukan: {root}",
+            "port_in_use": "Port {port} sudah dipakai proses lain",
+            "domain_format_invalid": "Format domain tidak valid: {domain}",
+            "domain_already_registered": "Domain {domain} sudah terdaftar",
+            "domain_not_found": "Domain {domain} tidak ditemukan",
+            "domain_required": "Domain wajib diisi",
+            "domain_not_found_or_not_lb": "Domain tidak ditemukan atau bukan mode WAF + Load Balancer",
+            "cc_waf_autoblock_not_enabled": "CC Defense maupun WAF Auto-Block belum diaktifkan untuk domain ini",
+            "interval_must_be_number": "Interval harus angka",
+            "interval_unknown": "Interval tidak dikenal: {value}",
+            "php_config_read_failed": "Gagal membaca konfigurasi PHP dari binary FrankenPHP",
+            "memory_limit_invalid": "memory_limit tidak valid (contoh: 256M, 1G, -1)",
+            "size_value_invalid": "{key} tidak valid (contoh: 20M, 512K)",
+            "seconds_value_invalid": "{key} harus angka (detik), -1 = unlimited",
+            "seconds_range_invalid": "{key} harus antara -1 sampai 86400",
+            "timezone_invalid": "date.timezone tidak valid (contoh: Asia/Jakarta, UTC)",
+            "display_errors_invalid": "display_errors harus On atau Off",
+            "no_changes_submitted": "Tidak ada perubahan dikirim",
+            "wrapper_created_but_failed": "Wrapper dibuat tapi gagal dijalankan: {detail}",
+            "no_ip_over_threshold": "Tidak ada IP yang melebihi threshold saat ini",
+            "ip_auto_blocked": "{count} IP diblokir otomatis ({detail})",
+            "no_autoblock_to_clear": "Tidak ada IP auto-block untuk dibersihkan",
+            "autoblock_cleared": "{count} IP auto-block dibersihkan",
+            "log_lines_processed": "{count} baris log baru diproses",
+            "php_cli_wrapper_active": "Command 'php' sekarang menjalankan PHP embedded FrankenPHP",
+            "mode_unknown": "Mode tidak dikenal: {mode}",
+            "email_format_invalid": "Format email tidak valid: {email}",
+            "waf_engine_unknown": "Mode WAF engine tidak dikenal: {engine}",
+            "paranoia_must_be_number": "Paranoia level harus angka",
+            "paranoia_range": "Paranoia level harus 1-4",
+            "anomaly_threshold_must_be_number": "Anomaly threshold harus angka",
+            "anomaly_threshold_range": "Anomaly threshold harus 1-1000",
+            "custom_rule_no_backtick": "Custom rule tidak boleh mengandung karakter backtick (`)",
+            "custom_rule_id_reserved": "ID rule 900000-900999 dipakai internal oleh OWASP CRS & sistem ini (900500) - pakai ID lain, disarankan >= 1000000, supaya tidak bentrok dan WAF gagal diam-diam",
+            "upload_filter_mode_unknown": "Mode filter upload tidak dikenal: {mode}",
+            "upload_filter_empty_list": "Filter upload aktif tapi daftar ekstensi/MIME masih kosong",
+            "cc_threshold_must_be_number": "CC Defense: threshold harus angka",
+            "cc_threshold_range": "CC Defense: threshold harus 5-100000",
+            "cc_window_must_be_number": "CC Defense: window harus angka",
+            "cc_window_range": "CC Defense: window harus 5-3600 detik",
+            "autoblock_threshold_must_be_number": "WAF Auto-Block: threshold harus angka",
+            "autoblock_threshold_range": "WAF Auto-Block: threshold harus 2-1000",
+            "autoblock_window_must_be_number": "WAF Auto-Block: window harus angka",
+            "autoblock_window_range": "WAF Auto-Block: window harus 1-1440 menit",
+            "lb_backend_required": "Minimal 1 backend server (format host:port) wajib diisi untuk mode load balancer",
+            "lb_policy_unknown": "LB policy tidak dikenal: {policy}",
+            "health_path_must_start_slash": "Health check path harus diawali /",
+            "health_interval_must_be_number": "Health check interval harus angka",
+            "health_interval_range": "Health check interval harus 5-3600 detik",
+            "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
+            "ip_cidr_invalid": "Format IP/CIDR tidak valid: {value}",
+            "http_method_unsupported": "Method HTTP tidak didukung: {value}",
+            "upload_filter_entry_invalid": "Format entry tidak valid: '{value}' (harus ekstensi seperti 'php' atau MIME type seperti 'image/jpeg')",
+            "config_invalid_not_applied": "Konfigurasi tidak valid, perubahan TIDAK diterapkan: {detail}",
+            "site_added": "Domain {domain} ditambahkan. Caddy akan otomatis minta sertifikat Let's Encrypt (pastikan DNS domain ini sudah mengarah ke server & port 80/443 terbuka).",
+            "site_removed": "Domain {domain} dihapus dari FrankenPHP (file di document root tidak dihapus)",
+            "no_log_for_domain": "(belum ada log untuk domain ini - belum pernah menerima request)",
+            "config_saved_restarted": "Konfigurasi disimpan, service di-restart",
+            "domain_config_updated": "Konfigurasi domain {domain} diperbarui & service di-restart",
+            "php_config_saved_restarted": "Konfigurasi PHP disimpan, service di-restart",
+            "lang_invalid": "Bahasa tidak dikenal: {lang}",
+            "lang_saved": "Bahasa disimpan",
+        },
+    }
+
+    def _get_lang(self):
+        if os.path.exists(self.__lang_file):
+            try:
+                cfg = json.loads(public.ReadFile(self.__lang_file))
+                if cfg.get("lang") in self.__langs:
+                    return cfg["lang"]
+            except:
+                pass
+        return "en"
+
+    def _t(self, key, **kwargs):
+        lang = self._get_lang()
+        template = self.__i18n.get(lang, {}).get(key) or self.__i18n["en"].get(key) or key
+        try:
+            return template.format(**kwargs)
+        except Exception:
+            return template
+
+    def GetLang(self, get):
+        return {"status": True, "lang": self._get_lang()}
+
+    def SetLang(self, get):
+        lang = get.lang.strip() if ('lang' in get and get.lang.strip()) else ""
+        if lang not in self.__langs:
+            return public.ReturnMsg(False, self._t("lang_invalid", lang=lang))
+        os.makedirs(os.path.dirname(self.__lang_file), exist_ok=True)
+        public.WriteFile(self.__lang_file, json.dumps({"lang": lang}))
+        return public.ReturnMsg(True, self._t("lang_saved"))
+
     def _is_installed(self):
         return os.path.exists(self.__bin)
 
@@ -60,7 +268,7 @@ class frankenphp_main:
         backends = [p for p in parts if p]
         for b in backends:
             if not self.__backend_re.match(b):
-                raise ValueError("Format backend tidak valid (harus host:port): " + b)
+                raise ValueError(self._t("backend_format_invalid", value=b))
         return backends
 
     def _parse_ip_list(self, text):
@@ -73,7 +281,7 @@ class frankenphp_main:
                 continue  # IPv6, validasi longgar
             m = self.__ipv4_cidr_re.match(ip)
             if not m or any(int(g) > 255 for g in m.groups()[:4]):
-                raise ValueError("Format IP/CIDR tidak valid: " + ip)
+                raise ValueError(self._t("ip_cidr_invalid", value=ip))
         return ips
 
     def _parse_methods(self, text):
@@ -83,7 +291,7 @@ class frankenphp_main:
         methods = sorted(set(p.upper() for p in parts if p))
         for m in methods:
             if m not in self.__http_methods:
-                raise ValueError("Method HTTP tidak didukung: " + m)
+                raise ValueError(self._t("http_method_unsupported", value=m))
         return methods
 
     def _parse_upload_filter_list(self, text):
@@ -100,9 +308,7 @@ class frankenphp_main:
             if self.__upload_filter_ext_re.match(p) or self.__upload_filter_mime_re.match(p):
                 out.append(p)
             else:
-                raise ValueError(
-                    "Format entry tidak valid: '" + p + "' (harus ekstensi seperti 'php' atau MIME type seperti 'image/jpeg')"
-                )
+                raise ValueError(self._t("upload_filter_entry_invalid", value=p))
         return sorted(set(out))
 
     def _cpu_percent(self):
@@ -549,7 +755,7 @@ class frankenphp_main:
         if not valid:
             err_lines = [l for l in out.splitlines() if 'error' in l.lower()]
             err_msg = err_lines[-1] if err_lines else (out.strip().splitlines()[-1] if out.strip() else "unknown error")
-            return False, "Konfigurasi tidak valid, perubahan TIDAK diterapkan: " + err_msg
+            return False, self._t("config_invalid_not_applied", detail=err_msg)
         public.WriteFile(self.__caddyfile, content)
         public.ExecShell("chown -R www:www %s" % self.__install_dir)
         public.ExecShell("systemctl restart %s" % self.__service)
@@ -627,16 +833,16 @@ class frankenphp_main:
         token tidak pernah dikirim balik ke frontend setelah disimpan."""
         token = get.token.strip() if ('token' in get and get.token.strip()) else ""
         if len(token) < 10:
-            return public.ReturnMsg(False, "Token tidak valid (terlalu pendek)")
+            return public.ReturnMsg(False, self._t("gh_token_too_short"))
         os.makedirs(os.path.dirname(self.__github_token_file), exist_ok=True)
         public.WriteFile(self.__github_token_file, token)
         os.chmod(self.__github_token_file, 0o600)
-        return public.ReturnMsg(True, "Token GitHub disimpan")
+        return public.ReturnMsg(True, self._t("gh_token_saved"))
 
     def RemoveGithubToken(self, get):
         if os.path.exists(self.__github_token_file):
             os.remove(self.__github_token_file)
-        return public.ReturnMsg(True, "Token GitHub dihapus")
+        return public.ReturnMsg(True, self._t("gh_token_removed"))
 
     def _get_spc_config(self):
         """Config extension static-php-cli (versi + daftar extension) - disimpan di file,
@@ -678,7 +884,7 @@ class frankenphp_main:
         memang kompatibel dengan alur build.sh (belum tentu semua versi baru langsung aman)."""
         version = get.spc_version.strip() if ('spc_version' in get and get.spc_version.strip()) else ""
         if not self.__spc_version_re.match(version):
-            return public.ReturnMsg(False, "Format versi static-php-cli tidak valid (contoh: 2.8.5)")
+            return public.ReturnMsg(False, self._t("spc_version_invalid"))
 
         url = "https://raw.githubusercontent.com/crazywhalecc/static-php-cli/%s/config/ext.json" % version
         shell = public.ExecShell("curl -sL --fail --max-time 30 '%s'" % url)
@@ -689,7 +895,7 @@ class frankenphp_main:
         except:
             return public.ReturnMsg(False, "Gagal mengambil/parse config/ext.json untuk versi " + version + " - cek apakah tag rilis tsb benar-benar ada di static-php-cli")
         if len(new_extensions) < 20:
-            return public.ReturnMsg(False, "Hasil terlalu sedikit (%d extension) - kemungkinan URL/versi salah, tidak diterapkan" % len(new_extensions))
+            return public.ReturnMsg(False, self._t("spc_refresh_too_few", count=len(new_extensions)))
 
         old_cfg = self._get_spc_config()
         old_extensions = set(old_cfg["extensions"])
@@ -703,11 +909,11 @@ class frankenphp_main:
         os.makedirs(os.path.dirname(self.__spc_config_file), exist_ok=True)
         public.WriteFile(self.__spc_config_file, json.dumps(new_cfg))
 
-        msg = "Daftar extension diperbarui ke static-php-cli %s (%d extension total)" % (version, len(new_extensions))
+        msg = self._t("spc_refresh_success", version=version, count=len(new_extensions))
         if added:
-            msg += ". Baru: " + ", ".join(added[:20]) + (" dst" if len(added) > 20 else "")
+            msg += self._t("spc_refresh_added", list=", ".join(added[:20]) + (self._t("more_suffix") if len(added) > 20 else ""))
         if removed:
-            msg += ". Hilang: " + ", ".join(removed[:20]) + (" dst" if len(removed) > 20 else "")
+            msg += self._t("spc_refresh_removed", list=", ".join(removed[:20]) + (self._t("more_suffix") if len(removed) > 20 else ""))
         result = public.ReturnMsg(True, msg)
         result["extensions"] = new_extensions
         result["recommended"] = new_recommended
@@ -732,14 +938,14 @@ class frankenphp_main:
 
     def Install(self, get):
         if self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP sudah terinstall")
+            return public.ReturnMsg(False, self._t("already_installed"))
 
         php_version = get.php_version.strip() if ('php_version' in get and get.php_version.strip()) else "latest"
 
         if php_version == "custom":
             custom_version = get.custom_php_version.strip() if ('custom_php_version' in get and get.custom_php_version.strip()) else ""
             if not self.__custom_php_version_re.match(custom_version):
-                return public.ReturnMsg(False, "Format versi PHP tidak valid (contoh: 8.2 atau 8.2.28)")
+                return public.ReturnMsg(False, self._t("php_version_invalid"))
 
             spc_cfg = self._get_spc_config()
             spc_version = spc_cfg["spc_version"]
@@ -747,10 +953,10 @@ class frankenphp_main:
             ext_raw = get.extensions if 'extensions' in get else ""
             extensions = sorted(set(e.strip() for e in ext_raw.split(",") if e.strip()))
             if not extensions:
-                return public.ReturnMsg(False, "Pilih minimal 1 extension")
+                return public.ReturnMsg(False, self._t("pick_min_1_ext"))
             unknown = [e for e in extensions if e not in spc_cfg["extensions"]]
             if unknown:
-                return public.ReturnMsg(False, "Extension tidak dikenal: " + ", ".join(unknown))
+                return public.ReturnMsg(False, self._t("unknown_extensions", list=", ".join(unknown)))
 
             public.ExecShell("echo '' > %s" % self.__install_log)
             shell_cmd = "bash %s/install.sh install custom %s %s %s" % (
@@ -766,10 +972,10 @@ class frankenphp_main:
             return public.ReturnMsg(True, "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli " + spc_version + ") - aman ditinggal, progress juga muncul di menu Task aaPanel")
 
         if php_version not in self.__php_version_tags:
-            return public.ReturnMsg(False, "Pilihan versi PHP tidak dikenal: " + php_version)
+            return public.ReturnMsg(False, self._t("unknown_php_version_choice", version=php_version))
         release_tag = self.__php_version_tags[php_version]
         if release_tag and not self.__release_tag_re.match(release_tag):
-            return public.ReturnMsg(False, "Tag rilis internal tidak valid")  # pengaman, seharusnya tidak pernah kena
+            return public.ReturnMsg(False, self._t("internal_release_tag_invalid"))  # pengaman, seharusnya tidak pernah kena
 
         public.ExecShell("echo '' > %s" % self.__install_log)
         shell_cmd = "bash %s/install.sh install %s" % (self.__plugin_dir, release_tag)
@@ -785,7 +991,7 @@ class frankenphp_main:
 
     def Uninstall(self, get):
         public.ExecShell("bash %s/install.sh uninstall" % self.__plugin_dir)
-        return public.ReturnMsg(True, "FrankenPHP telah dihapus")
+        return public.ReturnMsg(True, self._t("uninstalled"))
 
     # ---- service control ----
 
@@ -821,23 +1027,23 @@ class frankenphp_main:
     def SetConfig(self, get):
         """Atur port+root fallback, dipakai HANYA saat belum ada domain terdaftar (sites kosong)."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         try:
             port = int(get.port)
         except:
-            return public.ReturnMsg(False, "Port tidak valid")
+            return public.ReturnMsg(False, self._t("port_invalid"))
         if port < 1 or port > 65535:
-            return public.ReturnMsg(False, "Port harus di antara 1-65535")
+            return public.ReturnMsg(False, self._t("port_range"))
         root = get.root.strip() if ('root' in get and get.root.strip()) else self.__install_dir + "/www/public"
         if not os.path.exists(root):
-            return public.ReturnMsg(False, "Direktori root tidak ditemukan: " + root)
+            return public.ReturnMsg(False, self._t("root_dir_not_found", root=root))
 
         cfg = self._get_config()
         sites = cfg.get("sites", [])
         if not sites:
             check = public.ExecShell("ss -tlnp 2>/dev/null | grep ':%s '" % port)
             if check and check[0] and 'frankenphp' not in check[0]:
-                return public.ReturnMsg(False, "Port %s sudah dipakai proses lain" % port)
+                return public.ReturnMsg(False, self._t("port_in_use", port=port))
 
         ok, err = self._apply_caddyfile(sites, port, root)
         if not ok:
@@ -847,7 +1053,7 @@ class frankenphp_main:
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
         result = self.GetServerStatus(get)
-        result["msg"] = "Konfigurasi disimpan, service di-restart"
+        result["msg"] = self._t("config_saved_restarted")
         result["status"] = True
         return result
 
@@ -855,11 +1061,11 @@ class frankenphp_main:
         """Validasi field form (mode, root, backends, lb_policy, email) -> (dict, None) atau (None, error_msg)"""
         mode = get.mode.strip() if ('mode' in get and get.mode.strip()) else "php"
         if mode not in self.__modes:
-            return None, "Mode tidak dikenal: " + mode
+            return None, self._t("mode_unknown", mode=mode)
 
         email = get.email.strip() if ('email' in get and get.email.strip()) else ""
         if email and not self.__email_re.match(email):
-            return None, "Format email tidak valid: " + email
+            return None, self._t("email_format_invalid", email=email)
 
         force_https = str(get.force_https).strip() == "1" if 'force_https' in get else False
 
@@ -868,24 +1074,24 @@ class frankenphp_main:
         if mode in ("waf_php", "waf_proxy"):
             engine = get.waf_engine.strip() if ('waf_engine' in get and get.waf_engine.strip()) else "on"
             if engine not in self.__waf_engines:
-                return None, "Mode WAF engine tidak dikenal: " + engine
+                return None, self._t("waf_engine_unknown", engine=engine)
             try:
                 paranoia = int(get.waf_paranoia) if ('waf_paranoia' in get and str(get.waf_paranoia).strip()) else 1
             except:
-                return None, "Paranoia level harus angka"
+                return None, self._t("paranoia_must_be_number")
             if paranoia not in self.__paranoia_range:
-                return None, "Paranoia level harus 1-4"
+                return None, self._t("paranoia_range")
             try:
                 threshold = int(get.waf_threshold) if ('waf_threshold' in get and str(get.waf_threshold).strip()) else 5
             except:
-                return None, "Anomaly threshold harus angka"
+                return None, self._t("anomaly_threshold_must_be_number")
             if threshold < 1 or threshold > 1000:
-                return None, "Anomaly threshold harus 1-1000"
+                return None, self._t("anomaly_threshold_range")
             custom_rules = get.waf_custom_rules if 'waf_custom_rules' in get else ""
             if custom_rules and '`' in custom_rules:
-                return None, "Custom rule tidak boleh mengandung karakter backtick (`)"
+                return None, self._t("custom_rule_no_backtick")
             if custom_rules and re.search(r'\bid\s*:\s*900[0-9]{3}\b', custom_rules):
-                return None, "ID rule 900000-900999 dipakai internal oleh OWASP CRS & sistem ini (900500) - pakai ID lain, disarankan >= 1000000, supaya tidak bentrok dan WAF gagal diam-diam"
+                return None, self._t("custom_rule_id_reserved")
             try:
                 whitelist = self._parse_ip_list(get.waf_whitelist if 'waf_whitelist' in get else "")
             except ValueError as e:
@@ -902,13 +1108,13 @@ class frankenphp_main:
             upload_filter_enabled = str(get.waf_upload_filter_enabled).strip() == "1" if 'waf_upload_filter_enabled' in get else False
             upload_filter_mode = get.waf_upload_filter_mode.strip() if ('waf_upload_filter_mode' in get and get.waf_upload_filter_mode.strip()) else "blacklist"
             if upload_filter_mode not in self.__upload_filter_modes:
-                return None, "Mode filter upload tidak dikenal: " + upload_filter_mode
+                return None, self._t("upload_filter_mode_unknown", mode=upload_filter_mode)
             try:
                 upload_filter_list = self._parse_upload_filter_list(get.waf_upload_filter_list if 'waf_upload_filter_list' in get else "")
             except ValueError as e:
                 return None, str(e)
             if upload_filter_enabled and not upload_filter_list:
-                return None, "Filter upload aktif tapi daftar ekstensi/MIME masih kosong"
+                return None, self._t("upload_filter_empty_list")
 
             # blacklist auto-hasil CC Defense tetap dipertahankan (jangan hilang tiap kali form disave),
             # digabung dengan yang manual & di-dedup.
@@ -919,29 +1125,29 @@ class frankenphp_main:
             try:
                 cc_threshold = int(get.cc_threshold) if ('cc_threshold' in get and str(get.cc_threshold).strip()) else 300
             except:
-                return None, "CC Defense: threshold harus angka"
+                return None, self._t("cc_threshold_must_be_number")
             if cc_threshold < 5 or cc_threshold > 100000:
-                return None, "CC Defense: threshold harus 5-100000"
+                return None, self._t("cc_threshold_range")
             try:
                 cc_window = int(get.cc_window) if ('cc_window' in get and str(get.cc_window).strip()) else 60
             except:
-                return None, "CC Defense: window harus angka"
+                return None, self._t("cc_window_must_be_number")
             if cc_window < 5 or cc_window > 3600:
-                return None, "CC Defense: window harus 5-3600 detik"
+                return None, self._t("cc_window_range")
 
             waf_autoblock_enabled = str(get.waf_autoblock_enabled).strip() == "1" if 'waf_autoblock_enabled' in get else False
             try:
                 waf_autoblock_threshold = int(get.waf_autoblock_threshold) if ('waf_autoblock_threshold' in get and str(get.waf_autoblock_threshold).strip()) else 5
             except:
-                return None, "WAF Auto-Block: threshold harus angka"
+                return None, self._t("autoblock_threshold_must_be_number")
             if waf_autoblock_threshold < 2 or waf_autoblock_threshold > 1000:
-                return None, "WAF Auto-Block: threshold harus 2-1000"
+                return None, self._t("autoblock_threshold_range")
             try:
                 waf_autoblock_window = int(get.waf_autoblock_window) if ('waf_autoblock_window' in get and str(get.waf_autoblock_window).strip()) else 10
             except:
-                return None, "WAF Auto-Block: window harus angka"
+                return None, self._t("autoblock_window_must_be_number")
             if waf_autoblock_window < 1 or waf_autoblock_window > 1440:
-                return None, "WAF Auto-Block: window harus 1-1440 menit"
+                return None, self._t("autoblock_window_range")
 
             site["waf_engine"] = engine
             site["waf_paranoia"] = paranoia
@@ -968,19 +1174,19 @@ class frankenphp_main:
             except ValueError as e:
                 return None, str(e)
             if not backends:
-                return None, "Minimal 1 backend server (format host:port) wajib diisi untuk mode load balancer"
+                return None, self._t("lb_backend_required")
             policy = get.lb_policy.strip() if ('lb_policy' in get and get.lb_policy.strip()) else "round_robin"
             if policy not in self.__lb_policies:
-                return None, "LB policy tidak dikenal: " + policy
+                return None, self._t("lb_policy_unknown", policy=policy)
             health_uri = get.health_uri.strip() if ('health_uri' in get and get.health_uri.strip()) else ""
             if health_uri and not health_uri.startswith("/"):
-                return None, "Health check path harus diawali /"
+                return None, self._t("health_path_must_start_slash")
             try:
                 health_interval = int(get.health_interval) if ('health_interval' in get and str(get.health_interval).strip()) else 30
             except:
-                return None, "Health check interval harus angka"
+                return None, self._t("health_interval_must_be_number")
             if health_interval < 5 or health_interval > 3600:
-                return None, "Health check interval harus 5-3600 detik"
+                return None, self._t("health_interval_range")
             site["backends"] = backends
             site["lb_policy"] = policy
             site["health_uri"] = health_uri
@@ -998,15 +1204,15 @@ class frankenphp_main:
 
     def AddSite(self, get):
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else ""
         if not domain or not self.__domain_re.match(domain):
-            return public.ReturnMsg(False, "Format domain tidak valid: " + domain)
+            return public.ReturnMsg(False, self._t("domain_format_invalid", domain=domain))
 
         cfg = self._get_config()
         sites = cfg.get("sites", [])
         if any(s["domain"] == domain for s in sites):
-            return public.ReturnMsg(False, "Domain " + domain + " sudah terdaftar")
+            return public.ReturnMsg(False, self._t("domain_already_registered", domain=domain))
 
         site, err = self._build_site_fields(get, domain, self.__install_dir + "/www/" + domain)
         if err:
@@ -1020,20 +1226,20 @@ class frankenphp_main:
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
         result = self.GetServerStatus(get)
-        result["msg"] = "Domain " + domain + " ditambahkan. Caddy akan otomatis minta sertifikat Let's Encrypt (pastikan DNS domain ini sudah mengarah ke server & port 80/443 terbuka)."
+        result["msg"] = self._t("site_added", domain=domain)
         result["status"] = True
         return result
 
     def UpdateSite(self, get):
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if 'domain' in get else ""
 
         cfg = self._get_config()
         sites = cfg.get("sites", [])
         idx = next((i for i, s in enumerate(sites) if s["domain"] == domain), None)
         if idx is None:
-            return public.ReturnMsg(False, "Domain " + domain + " tidak ditemukan")
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
 
         site, err = self._build_site_fields(get, domain, self.__install_dir + "/www/" + domain, existing=sites[idx])
         if err:
@@ -1048,19 +1254,19 @@ class frankenphp_main:
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
         result = self.GetServerStatus(get)
-        result["msg"] = "Konfigurasi domain " + domain + " diperbarui & service di-restart"
+        result["msg"] = self._t("domain_config_updated", domain=domain)
         result["status"] = True
         return result
 
     def RemoveSite(self, get):
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if 'domain' in get else ""
         cfg = self._get_config()
         sites = cfg.get("sites", [])
         new_sites = [s for s in sites if s["domain"] != domain]
         if len(new_sites) == len(sites):
-            return public.ReturnMsg(False, "Domain " + domain + " tidak ditemukan")
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
 
         ok, err = self._apply_caddyfile(new_sites, cfg.get("port", 8080), cfg.get("root"))
         if not ok:
@@ -1069,7 +1275,7 @@ class frankenphp_main:
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
         result = self.GetServerStatus(get)
-        result["msg"] = "Domain " + domain + " dihapus dari FrankenPHP (file di document root tidak dihapus)"
+        result["msg"] = self._t("site_removed", domain=domain)
         result["status"] = True
         return result
 
@@ -1085,7 +1291,7 @@ class frankenphp_main:
             return self.GetLog(get)
         logfile = "%s/logs/access-%s.log" % (self.__install_dir, domain)
         if not os.path.exists(logfile):
-            return {"log": "(belum ada log untuk domain ini - belum pernah menerima request)"}
+            return {"log": self._t("no_log_for_domain")}
         shell = public.ExecShell("tail -n 300 '%s'" % logfile)
         return {"log": shell[0] if shell and shell[0] else ""}
 
@@ -1169,7 +1375,7 @@ class frankenphp_main:
         ts_from/ts_to (unix epoch detik, batas waktu kejadian)."""
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else ""
         if not domain:
-            return public.ReturnMsg(False, "Domain wajib diisi")
+            return public.ReturnMsg(False, self._t("domain_required"))
 
         ip_filter = get.ip.strip() if ('ip' in get and get.ip.strip()) else ""
         ref_filter = get.ref.strip().lower() if ('ref' in get and get.ref.strip()) else ""
@@ -1204,7 +1410,7 @@ class frankenphp_main:
         cfg = self._get_config()
         site = next((s for s in cfg.get("sites", []) if s["domain"] == domain), None)
         if not site or site.get("mode") != "waf_proxy":
-            return public.ReturnMsg(False, "Domain tidak ditemukan atau bukan mode WAF + Load Balancer")
+            return public.ReturnMsg(False, self._t("domain_not_found_or_not_lb"))
 
         path = site.get("health_uri") or "/"
         results = []
@@ -1293,22 +1499,22 @@ class frankenphp_main:
         mekanisme deteksi: CC Defense (flood volume request) dan WAF Auto-Block (pelanggaran
         WAF berulang), lalu gabungkan hasilnya ke blacklist otomatis."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else ""
         cfg = self._get_config()
         sites = cfg.get("sites", [])
         idx = next((i for i, s in enumerate(sites) if s["domain"] == domain), None)
         if idx is None:
-            return public.ReturnMsg(False, "Domain " + domain + " tidak ditemukan")
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
         site = sites[idx]
         if not site.get("cc_enabled") and not site.get("waf_autoblock_enabled"):
-            return public.ReturnMsg(False, "CC Defense maupun WAF Auto-Block belum diaktifkan untuk domain ini")
+            return public.ReturnMsg(False, self._t("cc_waf_autoblock_not_enabled"))
 
         cc_offenders = self._scan_cc_for_site(site)
         waf_offenders = self._scan_waf_autoblock_for_site(site)
         offenders = sorted(set(cc_offenders) | set(waf_offenders))
         if not offenders:
-            return {"status": True, "msg": "Tidak ada IP yang melebihi threshold saat ini", "offenders": []}
+            return {"status": True, "msg": self._t("no_ip_over_threshold"), "offenders": []}
 
         new_site = dict(site)
         new_site["waf_blacklist_auto"] = sorted(set(site.get("waf_blacklist_auto", [])) | set(offenders))
@@ -1328,7 +1534,7 @@ class frankenphp_main:
             parts.append("%d IP karena serangan WAF berulang (>= %s pelanggaran/%smenit)" % (len(waf_offenders), site.get("waf_autoblock_threshold", 5), site.get("waf_autoblock_window", 10)))
         return {
             "status": True,
-            "msg": "%d IP diblokir otomatis (%s)" % (len(offenders), "; ".join(parts)),
+            "msg": self._t("ip_auto_blocked", count=len(offenders), detail="; ".join(parts)),
             "offenders": offenders,
         }
 
@@ -1360,16 +1566,16 @@ class frankenphp_main:
     def ClearCCBlacklist(self, get):
         """Bersihkan IP hasil auto-block CC Defense untuk satu domain (blacklist manual tetap dipertahankan)."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else ""
         cfg = self._get_config()
         sites = cfg.get("sites", [])
         idx = next((i for i, s in enumerate(sites) if s["domain"] == domain), None)
         if idx is None:
-            return public.ReturnMsg(False, "Domain " + domain + " tidak ditemukan")
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
         site = sites[idx]
         if not site.get("waf_blacklist_auto"):
-            return {"status": True, "msg": "Tidak ada IP auto-block untuk dibersihkan"}
+            return {"status": True, "msg": self._t("no_autoblock_to_clear")}
 
         new_site = dict(site)
         cleared_count = len(site.get("waf_blacklist_auto", []))
@@ -1382,7 +1588,7 @@ class frankenphp_main:
             return public.ReturnMsg(False, err)
         cfg["sites"] = candidate_sites
         public.WriteFile(self.__config_file, json.dumps(cfg))
-        return {"status": True, "msg": "%d IP auto-block dibersihkan" % cleared_count}
+        return {"status": True, "msg": self._t("autoblock_cleared", count=cleared_count)}
 
     # ---- statistik website (collector: access log -> SQLite, incremental) ----
 
@@ -1592,7 +1798,7 @@ class frankenphp_main:
     def CollectStats(self, get):
         """Trigger koleksi statistik manual (tombol UI) untuk semua domain, plus simpan event WAF ke SQLite."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         cfg = self._get_config()
         domains = [s["domain"] for s in cfg.get("sites", [])]
         conn = self._stats_db()
@@ -1603,7 +1809,7 @@ class frankenphp_main:
             self._collect_waf_events_to_db(conn)
         finally:
             conn.close()
-        return {"status": True, "msg": "%d baris log baru diproses" % total, "processed": total}
+        return {"status": True, "msg": self._t("log_lines_processed", count=total), "processed": total}
 
     def CollectAllStats(self):
         """Dipanggil dari systemd timer frankenphp-statscollect - tanpa param get."""
@@ -1647,13 +1853,13 @@ class frankenphp_main:
 
     def SetStatsInterval(self, get):
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         try:
             minutes = int(get.minutes) if ('minutes' in get and str(get.minutes).strip()) else 5
         except:
-            return public.ReturnMsg(False, "Interval harus angka")
+            return public.ReturnMsg(False, self._t("interval_must_be_number"))
         if minutes not in self.__stats_intervals:
-            return public.ReturnMsg(False, "Interval tidak dikenal: " + str(minutes))
+            return public.ReturnMsg(False, self._t("interval_unknown", value=str(minutes)))
         cfg = self._get_config()
         cfg["stats_scan_minutes"] = minutes
         public.WriteFile(self.__config_file, json.dumps(cfg))
@@ -1719,7 +1925,7 @@ class frankenphp_main:
         """Agregat lintas domain untuk dashboard Ringkasan: total request 24 jam, request
         ternoda (malicious) 24 jam, trend per jam, top attacker IP, log intersepsi terbaru."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         cfg = self._get_config()
         sites = cfg.get("sites", [])
         domains = [s["domain"] for s in sites]
@@ -1776,7 +1982,7 @@ class frankenphp_main:
 
     def GetWebStats(self, get):
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else "all"
         rng = get.range.strip() if ('range' in get and get.range.strip()) else "today"
         if rng not in ("today", "7d", "30d", "all"):
@@ -1881,7 +2087,7 @@ class frankenphp_main:
         """Agregat serangan (event WAF tersimpan) per negara asal IP (GeoIP), untuk peta
         serangan di Dashboard. Data DB-IP (CC BY 4.0) - lihat atribusi di frontend."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else "all"
         rng = get.range.strip() if ('range' in get and get.range.strip()) else "7d"
         if rng not in ("today", "7d", "30d", "all"):
@@ -1944,7 +2150,7 @@ class frankenphp_main:
         Sumber tabel request_log - retensi 30 hari (lihat __request_log_retention_days),
         beda dari data agregat lain yang tak terbatas."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else "all"
         rng = get.range.strip() if ('range' in get and get.range.strip()) else "today"
         if rng not in ("today", "7d", "30d", "all"):
@@ -2030,10 +2236,10 @@ class frankenphp_main:
 
     def GetPhpConfig(self, get):
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
         values = self._php_runtime_ini_get(self.__php_config_keys)
         if not values:
-            return public.ReturnMsg(False, "Gagal membaca konfigurasi PHP dari binary FrankenPHP")
+            return public.ReturnMsg(False, self._t("php_config_read_failed"))
         return {"status": True, "config": values}
 
     def SetPhpConfig(self, get):
@@ -2041,7 +2247,7 @@ class frankenphp_main:
         dikelola plugin ini). Restart service supaya PHP embedded baca ulang php.ini (tidak ada
         hot-reload utk ini directive semacam ini)."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
 
         def get_val(key):
             return get[key].strip() if (key in get and get[key].strip()) else None
@@ -2051,14 +2257,14 @@ class frankenphp_main:
         mem = get_val('memory_limit')
         if mem is not None:
             if not re.match(r'^-1$|^\d+[KMG]?$', mem, re.I):
-                return public.ReturnMsg(False, "memory_limit tidak valid (contoh: 256M, 1G, -1)")
+                return public.ReturnMsg(False, self._t("memory_limit_invalid"))
             updates['memory_limit'] = mem
 
         for key in ('upload_max_filesize', 'post_max_size'):
             val = get_val(key)
             if val is not None:
                 if not re.match(r'^\d+[KMG]?$', val, re.I):
-                    return public.ReturnMsg(False, key + " tidak valid (contoh: 20M, 512K)")
+                    return public.ReturnMsg(False, self._t("size_value_invalid", key=key))
                 updates[key] = val
 
         for key in ('max_execution_time', 'max_input_time'):
@@ -2067,25 +2273,25 @@ class frankenphp_main:
                 try:
                     n = int(val)
                 except:
-                    return public.ReturnMsg(False, key + " harus angka (detik), -1 = unlimited")
+                    return public.ReturnMsg(False, self._t("seconds_value_invalid", key=key))
                 if n < -1 or n > 86400:
-                    return public.ReturnMsg(False, key + " harus antara -1 sampai 86400")
+                    return public.ReturnMsg(False, self._t("seconds_range_invalid", key=key))
                 updates[key] = str(n)
 
         tz = get_val('date.timezone')
         if tz is not None:
             if not re.match(r'^[A-Za-z_]+(/[A-Za-z_-]+)*$', tz):
-                return public.ReturnMsg(False, "date.timezone tidak valid (contoh: Asia/Jakarta, UTC)")
+                return public.ReturnMsg(False, self._t("timezone_invalid"))
             updates['date.timezone'] = tz
 
         disp = get_val('display_errors')
         if disp is not None:
             if disp not in ('On', 'Off'):
-                return public.ReturnMsg(False, "display_errors harus On atau Off")
+                return public.ReturnMsg(False, self._t("display_errors_invalid"))
             updates['display_errors'] = disp
 
         if not updates:
-            return public.ReturnMsg(False, "Tidak ada perubahan dikirim")
+            return public.ReturnMsg(False, self._t("no_changes_submitted"))
 
         content = public.ReadFile(self.__php_ini_file) or ""
         lines = content.splitlines()
@@ -2108,7 +2314,7 @@ class frankenphp_main:
         time.sleep(1)
 
         result = self.GetServerStatus(get)
-        result["msg"] = "Konfigurasi PHP disimpan, service di-restart"
+        result["msg"] = self._t("php_config_saved_restarted")
         result["status"] = True
         return result
 
@@ -2135,7 +2341,7 @@ class frankenphp_main:
         justru dibutuhkan sbg "php" default, jangan aktifkan ini atau kembalikan manual via
         `ln -sf /path/php/asli /usr/bin/php`."""
         if not self._is_installed():
-            return public.ReturnMsg(False, "FrankenPHP belum terinstall")
+            return public.ReturnMsg(False, self._t("not_installed"))
 
         script = (
             "#!/bin/bash\n"
@@ -2155,11 +2361,11 @@ class frankenphp_main:
         shell = public.ExecShell("%s -r \"echo 'PHP ' . PHP_VERSION;\"" % self.__php_cli_wrapper_link)
         out = (shell[0] or "").strip() if shell else ""
         if "PHP" not in out:
-            return public.ReturnMsg(False, "Wrapper dibuat tapi gagal dijalankan: " + (shell[1] or out))
+            return public.ReturnMsg(False, self._t("wrapper_created_but_failed", detail=(shell[1] or out)))
 
         return {
             "status": True,
-            "msg": "Command 'php' sekarang menjalankan PHP embedded FrankenPHP",
+            "msg": self._t("php_cli_wrapper_active"),
             "path": self.__php_cli_wrapper_link,
             "version_output": out,
         }
