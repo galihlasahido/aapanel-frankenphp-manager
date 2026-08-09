@@ -52,6 +52,7 @@
 	.fp-mode-badge.m-php { background: #eef2ff; color: #4338ca; }
 	.fp-mode-badge.m-waf_php { background: #fef3e2; color: #9a5b00; }
 	.fp-mode-badge.m-waf_proxy { background: #f3e8ff; color: #7c3aed; }
+	.fp-mode-badge.m-worker { background: #dcfce7; color: #15803d; margin-left: 4px; }
 
 	/* security tab */
 	.fp-cat-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: #fdeceb; color: #c0362c; white-space: nowrap; }
@@ -247,6 +248,10 @@
 			usage_example: 'Usage example:', custom_rule: 'Custom rule', registered_domains: 'Registered domains',
 			email_optional: 'Email (optional)', engine: 'Engine', error_rate: 'Error Rate', extension: 'Extension',
 			upload_filter_title: 'Upload File Filter (Extension & MIME-type)', force_https: 'Force HTTPS',
+			worker_mode_title: 'PHP Worker Mode', worker_mode_badge: 'Worker',
+			worker_mode_hint: 'Keeps the app booted in memory between requests (no reboot per request) - much faster, but the app must be "worker-safe" (avoid leftover state between requests). Needs a worker script implementing FrankenPHP\'s worker protocol - Laravel Octane provides one ready to use at vendor/laravel/octane/bin/frankenphp-worker.php.',
+			worker_script_label: 'Worker script path', worker_script_placeholder: 'e.g. /www/wwwroot/example.com/vendor/laravel/octane/bin/frankenphp-worker.php',
+			worker_num_label: 'Number of workers', worker_num_hint: 'Number of persistent PHP processes handling requests (a common starting point is the number of CPU cores)',
 			gh_token_label: 'GitHub Token (optional, highly recommended)', http_method: 'HTTP Method',
 			top_pages: 'Most Visited Pages', health_check_path: 'Health check path', top_ips: 'Top IPs',
 			ip_whitelist_blacklist: 'IP Whitelist & Blacklist', unique_attacker_ips: 'Unique attacker IPs',
@@ -414,6 +419,10 @@
 			usage_example: 'Contoh pemakaian:', custom_rule: 'Custom rule', registered_domains: 'Domain terdaftar',
 			email_optional: 'Email (opsional)', engine: 'Engine', error_rate: 'Error Rate', extension: 'Extension',
 			upload_filter_title: 'Filter Upload File (Ekstensi &amp; MIME-type)', force_https: 'Force HTTPS',
+			worker_mode_title: 'PHP Worker Mode', worker_mode_badge: 'Worker',
+			worker_mode_hint: 'Aplikasi tetap "hidup" di memory antar-request (tidak boot ulang tiap request) - jauh lebih cepat, tapi aplikasi harus "worker-safe" (hindari state nyangkut antar-request). Butuh worker script yang implementasi protokol worker FrankenPHP - Laravel Octane nyediain yang siap pakai di vendor/laravel/octane/bin/frankenphp-worker.php.',
+			worker_script_label: 'Path worker script', worker_script_placeholder: 'mis. /www/wwwroot/example.com/vendor/laravel/octane/bin/frankenphp-worker.php',
+			worker_num_label: 'Jumlah worker', worker_num_hint: 'Jumlah proses PHP persisten yang menangani request (titik awal umum: jumlah core CPU)',
 			gh_token_label: 'GitHub Token (opsional, sangat disarankan)', http_method: 'HTTP Method',
 			top_pages: 'Halaman Paling Sering Diakses', health_check_path: 'Health check path', top_ips: 'IP Teratas',
 			ip_whitelist_blacklist: 'IP Whitelist &amp; Blacklist', unique_attacker_ips: 'IP penyerang unik',
@@ -1372,7 +1381,8 @@
 			var target = s.mode === 'waf_proxy' ? (s.backends || []).join(', ') : s.root;
 			return '<tr>' +
 				'<td class="fp-domain-cell">' + fpEsc(s.domain) + '</td>' +
-				'<td><span class="fp-mode-badge ' + fpModeClass(s.mode) + '">' + fpModeLabel(s.mode) + '</span></td>' +
+				'<td><span class="fp-mode-badge ' + fpModeClass(s.mode) + '">' + fpModeLabel(s.mode) + '</span>' +
+				(s.worker_enabled ? ' <span class="fp-mode-badge m-worker">' + fpT('worker_mode_badge') + '</span>' : '') + '</td>' +
 				'<td>' + fpEsc(target) + '</td>' +
 				'<td><a class="btlink" href="' + url + '" target="_blank">' + fpEsc(s.domain) + '</a></td>' +
 				'<td class="fp-actions">' +
@@ -1768,6 +1778,9 @@
 		var policyVal = site ? (site.lb_policy || 'round_robin') : 'round_robin';
 		var emailVal = site ? (site.email || '') : '';
 		var forceHttpsVal = site ? !!site.force_https : false;
+		var workerEnabledVal = site ? !!site.worker_enabled : false;
+		var workerScriptVal = site ? (site.worker_script || '') : '';
+		var workerNumVal = site ? (site.worker_num || 4) : 4;
 		var wafEngineVal = site ? (site.waf_engine || 'on') : 'on';
 		var wafParanoiaVal = site ? (site.waf_paranoia || 1) : 1;
 		var wafThresholdVal = site ? (site.waf_threshold || 5) : 5;
@@ -1852,6 +1865,15 @@
 				: '<div class="fp-hint">' + fpT('save_domain_first_health') + '</div>') +
 			'</div>';
 
+		var workerSection = '' +
+			'<div class="fp-subsection fp_section_worker_wrap">' +
+			'<div class="fp-subsection-title">' + fpT('worker_mode_title') + '</div>' +
+			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('enable') + '</div><label class="fp-switch"><input type="checkbox" id="fp_s_worker_enabled" ' + (workerEnabledVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label></div>' +
+			'<div class="fp-hint" style="margin-top:4px;margin-bottom:8px;">' + fpT('worker_mode_hint') + '</div>' +
+			'<div class="fp-subrow" style="align-items:flex-start;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('worker_script_label') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_worker_script" placeholder="' + fpT('worker_script_placeholder') + '" value="' + fpEsc(workerScriptVal) + '"></div></div>' +
+			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('worker_num_label') + '</div><input class="fp-input" id="fp_s_worker_num" type="text" value="' + fpEsc(workerNumVal) + '" style="max-width:100px;"> <span class="fp-hint">' + fpT('worker_num_hint') + '</span></div>' +
+			'</div>';
+
 		var content = '' +
 			'<div class="fp-box">' +
 			'<div class="fp-toolbar" style="margin-bottom:14px;">' +
@@ -1867,6 +1889,7 @@
 			'</select></div></div>' +
 			lbSection + '</div>' +
 			'<div class="fp_section_waf_wrap">' + wafSection + '</div>' +
+			workerSection +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('force_https') + '</div><div class="fp-form-field"><label class="fp-switch"><input type="checkbox" id="fp_s_force_https" ' + (forceHttpsVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label>' +
 			'<div class="fp-hint" style="margin-top:4px;">' + fpT('force_https_hint') + '</div></div></div>' +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('email_optional') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_email" placeholder="' + fpT('email_placeholder') + '" value="' + fpEsc(emailVal) + '"></div></div>' +
@@ -1883,6 +1906,7 @@
 			$('.fp_row_root').toggle(m !== 'waf_proxy');
 			$('.fp_row_backends').toggle(m === 'waf_proxy');
 			$('.fp_section_waf_wrap').toggle(m === 'waf_php' || m === 'waf_proxy');
+			$('.fp_section_worker_wrap').toggle(m !== 'waf_proxy');
 			$('.fp-mode-card').removeClass('sel').filter('[data-mode="' + m + '"]').addClass('sel');
 			fpFixLayerBox($('#fp_plugin').closest('.layui-layer'));
 		}
@@ -1935,6 +1959,9 @@
 			data.health_interval = $('#fp_s_health_interval').val();
 		} else {
 			data.root = $('#fp_s_root').val();
+			data.worker_enabled = $('#fp_s_worker_enabled').is(':checked') ? '1' : '0';
+			data.worker_script = $('#fp_s_worker_script').val();
+			data.worker_num = $('#fp_s_worker_num').val();
 		}
 		if (mode === 'waf_php' || mode === 'waf_proxy') {
 			data.waf_engine = $('#fp_s_waf_engine .fp-seg-opt.sel').data('val') || 'on';

@@ -104,6 +104,12 @@ class frankenphp_main:
             "health_path_must_start_slash": "Health check path must start with /",
             "health_interval_must_be_number": "Health check interval must be a number",
             "health_interval_range": "Health check interval must be 5-3600 seconds",
+            "worker_script_required": "Worker script path is required when worker mode is enabled",
+            "worker_script_must_be_absolute": "Worker script path must be absolute (start with /)",
+            "worker_script_must_be_php": "Worker script must be a .php file",
+            "worker_script_not_found": "Worker script file not found: {path}",
+            "worker_num_must_be_number": "Number of workers must be a number",
+            "worker_num_range": "Number of workers must be 1-64",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
             "ip_cidr_invalid": "Invalid IP/CIDR format: {value}",
             "http_method_unsupported": "Unsupported HTTP method: {value}",
@@ -191,6 +197,12 @@ class frankenphp_main:
             "health_path_must_start_slash": "Health check path harus diawali /",
             "health_interval_must_be_number": "Health check interval harus angka",
             "health_interval_range": "Health check interval harus 5-3600 detik",
+            "worker_script_required": "Path worker script wajib diisi kalau worker mode diaktifkan",
+            "worker_script_must_be_absolute": "Path worker script harus absolut (diawali /)",
+            "worker_script_must_be_php": "Worker script harus file .php",
+            "worker_script_not_found": "File worker script tidak ditemukan: {path}",
+            "worker_num_must_be_number": "Jumlah worker harus angka",
+            "worker_num_range": "Jumlah worker harus 1-64",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
             "ip_cidr_invalid": "Format IP/CIDR tidak valid: {value}",
             "http_method_unsupported": "Method HTTP tidak didukung: {value}",
@@ -714,7 +726,22 @@ class frankenphp_main:
                 ) % (health_uri, health_interval)
             body += "\treverse_proxy %s {\n%s\t}\n" % (" ".join(backends), rp_body)
         else:
-            body += "\troot * %s\n\tencode gzip\n\tphp_server\n" % s["root"]
+            if s.get("worker_enabled") and s.get("worker_script"):
+                # Worker mode: aplikasi tetap "hidup" di memory antar-request (tidak boot ulang
+                # tiap request kayak mode classic) - butuh worker script yang implementasi
+                # protokol worker FrankenPHP sendiri (mis. Laravel Octane nyediain
+                # vendor/laravel/octane/bin/frankenphp-worker.php siap pakai).
+                php_server_block = (
+                    "\tphp_server {\n"
+                    "\t\tworker {\n"
+                    "\t\t\tfile %s\n"
+                    "\t\t\tnum %s\n"
+                    "\t\t}\n"
+                    "\t}\n"
+                ) % (s["worker_script"], s.get("worker_num", 4))
+            else:
+                php_server_block = "\tphp_server\n"
+            body += "\troot * %s\n\tencode gzip\n%s" % (s["root"], php_server_block)
         body += "\tlog {\n\t\toutput file %s/logs/access-%s.log\n\t}\n" % (self.__install_dir, s["domain"])
         return "%s {\n%s}\n" % (s["domain"], body)
 
@@ -1214,6 +1241,34 @@ class frankenphp_main:
             if not os.path.exists(index_path):
                 public.WriteFile(index_path, "<?php\necho '<h1>' . htmlspecialchars($_SERVER['HTTP_HOST']) . ' is running</h1><p>PHP ' . PHP_VERSION . ' via FrankenPHP</p>';\n")
             site["root"] = root
+
+            # Worker mode: script-nya lazim ada DI LUAR root (mis. Laravel Octane -
+            # vendor/laravel/octane/bin/frankenphp-worker.php ada satu level di atas root
+            # public/), jadi sengaja TIDAK dibatasi harus di dalam root - konsisten dengan
+            # field root sendiri yang juga tidak dijail ke direktori tertentu (plugin ini
+            # cuma dipakai admin server, bukan input multi-tenant tidak terpercaya).
+            worker_enabled = str(get.worker_enabled).strip() == "1" if 'worker_enabled' in get else False
+            worker_script = ""
+            worker_num = 4
+            if worker_enabled:
+                worker_script = get.worker_script.strip() if ('worker_script' in get and get.worker_script.strip()) else ""
+                if not worker_script:
+                    return None, self._t("worker_script_required")
+                if not worker_script.startswith("/"):
+                    return None, self._t("worker_script_must_be_absolute")
+                if not worker_script.endswith(".php"):
+                    return None, self._t("worker_script_must_be_php")
+                if not os.path.isfile(worker_script):
+                    return None, self._t("worker_script_not_found", path=worker_script)
+                try:
+                    worker_num = int(get.worker_num) if ('worker_num' in get and str(get.worker_num).strip()) else 4
+                except:
+                    return None, self._t("worker_num_must_be_number")
+                if worker_num < 1 or worker_num > 64:
+                    return None, self._t("worker_num_range")
+            site["worker_enabled"] = worker_enabled
+            site["worker_script"] = worker_script
+            site["worker_num"] = worker_num
 
         return site, None
 
