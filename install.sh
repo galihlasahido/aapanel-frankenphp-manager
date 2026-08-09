@@ -156,6 +156,16 @@ Build_frankenphp_source(){
 
     log "Compile PHP $php_version (static, ZTS) + FrankenPHP dengan extension: $extensions ..."
     log "Ini bagian paling lama (15-40+ menit tergantung CPU) - tunggu sampai muncul 'Instalasi selesai' atau pesan gagal."
+    # PENTING - static-php-cli TIDAK menyertakan modul Coraza WAF (coraza_waf directive) di
+    # build FrankenPHP-nya secara default (cuma frankenphp inti + mercure + vulcain + caddy-
+    # cbrotli) - beda dari binary lama yang dipakai plugin ini sebelumnya (yang punya coraza).
+    # Tanpa ini, SEMUA domain mode PHP+WAF/WAF+LB gagal disave dengan error persis:
+    # "coraza_waf is not a registered directive" - ketauan dari laporan user langsung. Override
+    # env var SPC_CMD_VAR_FRANKENPHP_XCADDY_MODULES (dicek di source spc:
+    # UnixBuilderBase::buildFrankenphp()) dengan default resminya (config/env.ini) + modul
+    # coraza-caddy, exact Go module path dikonfirmasi langsung dari `strings` binary yang
+    # sebelumnya sukses pakai coraza (github.com/corazawaf/coraza-caddy/v2).
+    export SPC_CMD_VAR_FRANKENPHP_XCADDY_MODULES="--with github.com/dunglas/mercure/caddy --with github.com/dunglas/vulcain/caddy --with github.com/dunglas/caddy-cbrotli --with github.com/corazawaf/coraza-caddy/v2"
     # --with-added-patch (bisa lebih dari satu, spc jalanin semuanya): source php-src baru
     # di-extract SAAT `spc build` jalan (bukan saat `spc download`), jadi patch file source cuma
     # bisa dilakukan lewat hook resmi spc di titik-titik tertentu - lihat isi tiap file patch buat
