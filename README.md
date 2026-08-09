@@ -4,6 +4,26 @@ An [aaPanel](https://www.aapanel.com/) plugin to install and manage [FrankenPHP]
 
 Available in **English** and **Bahasa Indonesia** (switch anytime from the language picker in the top-right of the plugin UI — applies server-wide, to every user).
 
+## Screenshots
+
+The Add/Edit Domain form (scrolled top to bottom):
+
+![Mode picker (PHP / PHP+WAF / WAF+LB) and PHP Worker Mode section — Embedded vs Standalone process type, worker script path, worker count, and environment variables](images/frankenphp-manage-1.jpeg)
+
+*Mode picker and PHP Worker Mode — choose Embedded (runs inside the shared FrankenPHP process) or Standalone (its own systemd-managed process, reverse-proxied), point it at a worker script, and set any environment variables it needs (e.g. Laravel Octane's `APP_BASE_PATH`).*
+
+![Upload File Filter, CC Defense flood/brute-force protection, and WAF Auto-Block settings](images/frankenphp-manage-2.jpeg)
+
+*Upload File Filter (by extension and/or real file content, not just the spoofable `Content-Type` header), CC Defense (blocks IPs exceeding a request-volume threshold), and WAF Auto-Block (blocks IPs with repeated WAF rule violations — catches low-and-slow attacks CC Defense would miss).*
+
+![Core WAF settings: engine mode, paranoia level, anomaly threshold, allowed HTTP methods, custom Coraza rules, and IP whitelist/blacklist](images/frankenphp-manage-3.jpeg)
+
+*Core Coraza/OWASP CRS settings — block vs detection-only, paranoia level, allowed HTTP methods (with safe handling of framework method-override), custom rules, and IP whitelist/blacklist.*
+
+![Force HTTPS (HSTS) toggle, Let's Encrypt notification email, and the Save & Restart button](images/frankenphp-manage-4.jpeg)
+
+*Force HTTPS (adds an HSTS header on top of Caddy's already-automatic HTTP→HTTPS redirect) and an optional Let's Encrypt notification email.*
+
 ## Features
 
 ### Install
