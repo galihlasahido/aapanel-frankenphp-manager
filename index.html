@@ -179,7 +179,7 @@
 	.fp-install-card { background: #fff; border: 1px solid #eceff2; border-radius: 10px; padding: 26px; margin: 18px 20px; text-align: center; }
 	.fp-install-icon { width: 46px; height: 46px; border-radius: 12px; background: #eef2ff; color: #4338ca; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; margin: 0 auto 14px; }
 	.fp-install-desc { font-size: 13px; color: #6b7280; line-height: 1.7; max-width: 460px; margin: 0 auto 18px; }
-	#fp_install_log { display: none; margin-top: 16px; text-align: left; width: 100%; height: 220px; background: #1a1d24; color: #d3d7de; font-family: Consolas, monospace; font-size: 12px; padding: 12px; overflow: auto; white-space: pre-wrap; border-radius: 8px; }
+	#fp_install_status { display: none; margin-top: 14px; }
 </style>
 <div id="fp_plugin">
 	<div style="text-align:center;padding:60px 0;color:#9ca3af;font-size:13px;" id="fp_loading">Memuat status FrankenPHP...</div>
@@ -314,7 +314,7 @@
 			fill_php_version_first: 'Enter a PHP version first (e.g. 8.2)',
 			starting_custom_build: 'Starting custom build PHP {v} ({n} extensions) - this can take 15-40+ minutes...\n',
 			installing_btn: 'Installing...', install_success: 'FrankenPHP installed successfully',
-			install_failed_check_log: 'Installation failed, check the log above', retry_install_btn: 'Try Install Again',
+			install_failed_check_log: 'Installation failed, check the log in aaPanel\'s message box', retry_install_btn: 'Try Install Again',
 			pick_min_1_ext: 'Select at least 1 extension',
 			ext_conflict: 'Extension conflict: {hook} already includes {pdo} - static-php-cli does not allow enabling both together. Uncheck one of them.',
 			add_domain_btn: '+ Add Domain',
@@ -481,7 +481,7 @@
 			fill_php_version_first: 'Isi versi PHP dulu (mis. 8.2)',
 			starting_custom_build: 'Memulai build custom PHP {v} ({n} extension) - ini bisa 15-40+ menit...\n',
 			installing_btn: 'Menginstall...', install_success: 'FrankenPHP berhasil diinstall',
-			install_failed_check_log: 'Instalasi gagal, cek log di atas', retry_install_btn: 'Coba Install Lagi',
+			install_failed_check_log: 'Instalasi gagal, cek log di message box aaPanel', retry_install_btn: 'Coba Install Lagi',
 			pick_min_1_ext: 'Pilih minimal 1 extension',
 			ext_conflict: 'Extension bentrok: {hook} sudah menyediakan {pdo} - static-php-cli tidak mengizinkan keduanya aktif bersamaan. Hilangkan centang salah satu.',
 			add_domain_btn: '+ Tambah Domain',
@@ -656,7 +656,7 @@
 			'</div>' +
 			'</div>' +
 			'<button class="btn btn-success btn-sm" onclick="fpStartInstall()" id="fp_install_btn">' + fpT('install_franken_title') + '</button>' +
-			'<pre id="fp_install_log"></pre>' +
+			'<div id="fp_install_status" class="fp-hint"></div>' +
 			'</div>';
 		$('#fp_plugin').html(html);
 
@@ -758,9 +758,13 @@
 		}
 
 		$('#fp_install_btn').prop('disabled', true).text(fpT('installing_btn'));
-		$('#fp_install_log').show().text(startMsg);
+		// Log mentah instalasi sengaja tidak ditampilkan di sini lagi - progress-nya sudah
+		// otomatis muncul di message box bawaan aaPanel (dibuka via messagebox() di bawah),
+		// jadi cukup satu tempat saja. Di sini cukup status ringkas + polling buat tahu kapan
+		// instalasi selesai (buat auto-refresh & deteksi sukses/gagal).
+		$('#fp_install_status').show().text(startMsg);
 		fpAjaxPost('Install', data, function (r) {
-			if (!r.status) { layer.msg(r.msg, { icon: 2 }); $('#fp_install_btn').prop('disabled', false).text(fpT('install_franken_title')); return; }
+			if (!r.status) { layer.msg(r.msg, { icon: 2 }); $('#fp_install_btn').prop('disabled', false).text(fpT('install_franken_title')); $('#fp_install_status').text(''); return; }
 			fpPollInstall();
 			// Langsung buka panel Task bawaan aaPanel (fungsi global dari public.js) supaya
 			// progress-nya kelihatan jelas, tidak perlu cari-cari ikon Task manual.
@@ -770,9 +774,6 @@
 
 	function fpPollInstall() {
 		fpAjaxGet('GetInstallLog', function (d) {
-			var $log = $('#fp_install_log');
-			$log.text(d.log);
-			$log.scrollTop($log[0].scrollHeight);
 			if (d.finished) {
 				if (d.installed) {
 					layer.msg(fpT('install_success'), { icon: 1 });
@@ -780,6 +781,7 @@
 				} else {
 					layer.msg(fpT('install_failed_check_log'), { icon: 2 });
 					$('#fp_install_btn').prop('disabled', false).text(fpT('retry_install_btn'));
+					$('#fp_install_status').text('');
 				}
 				return;
 			}
