@@ -5,7 +5,6 @@ import sys, os, json, time, re, sqlite3, socket
 os.chdir("/www/server/panel")
 sys.path.append("class/")
 import public
-import panelTask
 
 
 class frankenphp_main:
@@ -692,6 +691,21 @@ class frankenphp_main:
         result["removed"] = removed
         return result
 
+    def _add_soft_install_task(self, name, shell_cmd):
+        """Daftarkan shell command ke tabel `tasks` aaPanel - INI (bukan panelTask.bt_task/
+        task_list) yang jadi sumber badge/message-box "Task" install plugin/software bawaan
+        aaPanel, dipoll tiap 2 detik oleh BTTask.task.soft_task(). Sempat salah pakai
+        panelTask.bt_task sebelumnya - itu jalan (task_list-nya sendiri valid & tereksekusi
+        via daemon BT-Task yang sama), tapi TIDAK muncul di message box karena UI message-box
+        aaPanel baca dari tabel `tasks`, bukan `task_list`. Wajib juga tulis tip file
+        /tmp/panelTask.pl - poller-nya SKIP total kalau file ini tidak ada, task bisa nyangkut
+        di status 'waiting' selamanya kalau lupa."""
+        public.M('tasks').add(
+            'id,name,type,status,addtime,execstr',
+            (None, name, 'execshell', '0', time.strftime('%Y-%m-%d %H:%M:%S'), shell_cmd)
+        )
+        public.WriteFile('/tmp/panelTask.pl', 'True')
+
     def Install(self, get):
         if self._is_installed():
             return public.ReturnMsg(False, "FrankenPHP sudah terinstall")
@@ -718,15 +732,13 @@ class frankenphp_main:
             shell_cmd = "bash %s/install.sh install custom %s %s %s" % (
                 self.__plugin_dir, custom_version, ",".join(extensions), spc_version
             )
-            # Pakai antrian task bawaan aaPanel (panelTask.bt_task), BUKAN nohup manual -
-            # dieksekusi oleh daemon BT-Task yang berjalan terpisah dari proses request HTTP
-            # ini, jadi proses build (bisa 15-40+ menit) benar-benar lepas dari koneksi
-            # browser/panel - tidak akan ikut mati kalau koneksi terputus atau proses
-            # penangan request ini di-recycle. Progress juga otomatis muncul di menu Task
-            # (message box) aaPanel sendiri, di luar polling GetInstallLog milik plugin ini.
-            panelTask.bt_task().create_task(
-                "Install FrankenPHP (build custom PHP %s)" % custom_version, '0', shell_cmd
-            )
+            # Daftar ke antrian install/software bawaan aaPanel (tabel `tasks`, BUKAN
+            # panelTask.bt_task/task_list) - dieksekusi oleh daemon BT-Task yang berjalan
+            # terpisah dari proses request HTTP ini, jadi proses build (bisa 15-40+ menit)
+            # benar-benar lepas dari koneksi browser/panel. Progress juga otomatis muncul
+            # di badge/message-box Task aaPanel sendiri, di luar polling GetInstallLog
+            # milik plugin ini.
+            self._add_soft_install_task("Install FrankenPHP (build custom PHP %s)" % custom_version, shell_cmd)
             return public.ReturnMsg(True, "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli " + spc_version + ") - aman ditinggal, progress juga muncul di menu Task aaPanel")
 
         if php_version not in self.__php_version_tags:
@@ -737,7 +749,7 @@ class frankenphp_main:
 
         public.ExecShell("echo '' > %s" % self.__install_log)
         shell_cmd = "bash %s/install.sh install %s" % (self.__plugin_dir, release_tag)
-        panelTask.bt_task().create_task("Install FrankenPHP", '0', shell_cmd)
+        self._add_soft_install_task("Install FrankenPHP", shell_cmd)
         return public.ReturnMsg(True, "Instalasi dimulai di background - aman ditinggal, progress juga muncul di menu Task aaPanel")
 
     def GetInstallLog(self, get):
