@@ -373,6 +373,7 @@
 			health_path_placeholder: 'optional, e.g. /health', check_health_now_btn: 'Check Backend Health Now',
 			edit_domain_prefix: 'Edit Domain: ', add_domain_title: 'Add Domain',
 			back_to_domain_list: '&larr; Back to domain list', doc_root_auto_placeholder: 'blank = automatic',
+			domain_ip_hint: 'A plain server IP is also accepted if you don\'t have a domain yet (e.g. 203.0.113.10) - HTTPS will use a self-signed certificate (browsers will show an untrusted-certificate warning), and Force HTTPS/HSTS cannot be enabled for an IP.',
 			backends_placeholder: 'host:port, one per line or comma-separated',
 			force_https_hint: 'HTTP&rarr;HTTPS redirect is already automatic via Caddy (Let\'s Encrypt). This toggle adds an HSTS header so the browser ALWAYS uses HTTPS for this domain after the first visit, even if the link is http://.',
 			email_placeholder: "Let's Encrypt notifications", add_btn: 'Add',
@@ -550,6 +551,7 @@
 			health_path_placeholder: 'opsional, mis. /health', check_health_now_btn: 'Cek Kesehatan Backend Sekarang',
 			edit_domain_prefix: 'Edit Domain: ', add_domain_title: 'Tambah Domain',
 			back_to_domain_list: '&larr; Kembali ke daftar domain', doc_root_auto_placeholder: 'dikosongkan = otomatis',
+			domain_ip_hint: 'IP server polos juga bisa dipakai kalau belum punya domain (mis. 203.0.113.10) - HTTPS bakal pakai sertifikat self-signed (browser nampilin peringatan cert tidak terpercaya), dan Force HTTPS/HSTS tidak bisa diaktifkan buat IP.',
 			backends_placeholder: 'host:port, satu per baris atau pisah koma',
 			force_https_hint: 'Redirect HTTP&rarr;HTTPS sudah otomatis by Caddy (Let\'s Encrypt). Toggle ini menambahkan header HSTS supaya browser SELALU pakai HTTPS ke domain ini setelah kunjungan pertama, walau linknya http://.',
 			email_placeholder: "notifikasi Let's Encrypt", add_btn: 'Tambah',
@@ -1900,7 +1902,9 @@
 			'<div class="fp-section-title" style="margin:0;">' + (isEdit ? (fpT('edit_domain_prefix') + fpEsc(domainVal)) : fpT('add_domain_title')) + '</div>' +
 			'<button type="button" class="btn btn-default btn-sm fp_back_s">' + fpT('back_to_domain_list') + '</button>' +
 			'</div>' +
-			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('domain') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_domain" placeholder="contoh.com" value="' + fpEsc(domainVal) + '" ' + (isEdit ? 'readonly' : '') + '></div></div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('domain') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_domain" placeholder="contoh.com" value="' + fpEsc(domainVal) + '" ' + (isEdit ? 'readonly' : '') + '>' +
+			(isEdit ? '' : '<div class="fp-hint" style="margin-top:4px;">' + fpT('domain_ip_hint') + '</div>') +
+			'</div></div>' +
 			'<div class="fp-form-row" style="align-items:flex-start;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('mode') + '</div><div class="fp-form-field"><div class="fp-mode-picker" id="fp_mode_picker">' + modeCards + '</div><input type="hidden" id="fp_s_mode" value="' + mode + '"></div></div>' +
 			'<div class="fp-form-row fp_row_root"><div class="fp-form-label">' + fpT('document_root') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_root" placeholder="' + fpT('doc_root_auto_placeholder') + '" value="' + fpEsc(rootVal) + '"></div></div>' +
 			workerSection +

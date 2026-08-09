@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # coding: utf-8
-import sys, os, json, time, re, sqlite3, socket
+import sys, os, json, time, re, sqlite3, socket, ipaddress
 
 os.chdir("/www/server/panel")
 sys.path.append("class/")
@@ -115,12 +115,14 @@ class frankenphp_main:
             "worker_env_value_empty": "Env var {key} value cannot be empty",
             "worker_type_unknown": "Unknown worker type: {value}",
             "worker_port_unavailable": "No free port available for the standalone worker (range 9100-9999 all in use)",
+            "ip_force_https_unsafe": "Force HTTPS (HSTS) cannot be enabled for an IP address - it uses a self-signed certificate (not trusted by browsers by default), and HSTS combined with an untrusted cert can lock browsers out of this site for up to a year with no way to bypass it. Turn off Force HTTPS first.",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
             "ip_cidr_invalid": "Invalid IP/CIDR format: {value}",
             "http_method_unsupported": "Unsupported HTTP method: {value}",
             "upload_filter_entry_invalid": "Invalid entry: '{value}' (must be an extension like 'php' or a MIME type like 'image/jpeg')",
             "config_invalid_not_applied": "Invalid configuration, changes NOT applied: {detail}",
             "site_added": "Domain {domain} added. Caddy will automatically request a Let's Encrypt certificate (make sure this domain's DNS already points to the server & ports 80/443 are open).",
+            "site_added_ip": "IP {domain} added. HTTPS uses a self-signed certificate (browsers will show an untrusted-certificate warning until you install the Caddy root CA, or just use HTTP).",
             "site_removed": "Domain {domain} removed from FrankenPHP (files in the document root were not deleted)",
             "no_log_for_domain": "(no log for this domain yet - it hasn't received any requests)",
             "config_saved_restarted": "Configuration saved, service restarted",
@@ -213,12 +215,14 @@ class frankenphp_main:
             "worker_env_value_empty": "Value env var {key} tidak boleh kosong",
             "worker_type_unknown": "Tipe worker tidak dikenal: {value}",
             "worker_port_unavailable": "Tidak ada port kosong buat worker standalone (range 9100-9999 semua terpakai)",
+            "ip_force_https_unsafe": "Force HTTPS (HSTS) tidak bisa diaktifkan buat alamat IP - IP pakai sertifikat self-signed (default tidak dipercaya browser), dan HSTS dikombinasikan cert tidak terpercaya bisa mengunci browser dari situs ini sampai 1 tahun tanpa cara skip. Matikan Force HTTPS dulu.",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
             "ip_cidr_invalid": "Format IP/CIDR tidak valid: {value}",
             "http_method_unsupported": "Method HTTP tidak didukung: {value}",
             "upload_filter_entry_invalid": "Format entry tidak valid: '{value}' (harus ekstensi seperti 'php' atau MIME type seperti 'image/jpeg')",
             "config_invalid_not_applied": "Konfigurasi tidak valid, perubahan TIDAK diterapkan: {detail}",
             "site_added": "Domain {domain} ditambahkan. Caddy akan otomatis minta sertifikat Let's Encrypt (pastikan DNS domain ini sudah mengarah ke server & port 80/443 terbuka).",
+            "site_added_ip": "IP {domain} ditambahkan. HTTPS pakai sertifikat self-signed (browser bakal nampilin peringatan cert tidak terpercaya kecuali root CA Caddy diinstall, atau pakai HTTP saja).",
             "site_removed": "Domain {domain} dihapus dari FrankenPHP (file di document root tidak dihapus)",
             "no_log_for_domain": "(belum ada log untuk domain ini - belum pernah menerima request)",
             "config_saved_restarted": "Konfigurasi disimpan, service di-restart",
@@ -287,6 +291,18 @@ class frankenphp_main:
     __worker_env_key_re = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
     __worker_types = ("embedded", "standalone")
     __worker_port_range = (9100, 9999)
+
+    def _is_ipv4_address(self, s):
+        """True kalau `s` IPv4 murni (bukan CIDR, bukan IPv6) - dipakai supaya field domain di
+        form Add/Edit Domain bisa diisi IP server langsung (kalau belum ada domain terdaftar).
+        IPv6 sengaja TIDAK didukung dulu - titik dua di alamatnya bikin rumit penamaan unit
+        systemd worker standalone & beberapa matcher Caddy, belum sepadan dengan kebutuhan saat
+        ini (kasus utamanya cuma "server belum punya domain, mau akses via IP publik dulu")."""
+        try:
+            ipaddress.IPv4Address(s)
+            return True
+        except ValueError:
+            return False
 
     def _parse_backends(self, text):
         if not text:
@@ -813,6 +829,14 @@ class frankenphp_main:
     def _site_block(self, s):
         mode = s.get("mode", "php")
         body = "\theader -Server\n"
+        if self._is_ipv4_address(s.get("domain", "")):
+            # Let's Encrypt (automatic HTTPS bawaan Caddy) tidak bisa menerbitkan sertifikat
+            # buat alamat IP biasa - kalau dibiarkan tanpa directive tls, Caddy otomatis SKIP
+            # HTTPS sama sekali buat host berupa IP (cuma jalan HTTP polos). `tls internal`
+            # bikin Caddy pakai CA internal-nya sendiri buat generate sertifikat self-signed,
+            # jadi HTTPS tetap bisa dipakai - browser bakal warning "not trusted" (wajar, self-
+            # signed) kecuali root CA Caddy-nya diinstall manual ke device yang mengakses.
+            body += "\ttls internal\n"
         if s.get("force_https"):
             # Redirect otomatis HTTP->HTTPS sudah ditangani Caddy (automatic HTTPS) selama
             # domain berhasil dapat sertifikat Let's Encrypt - toggle ini menambahkan HSTS
@@ -1448,8 +1472,15 @@ class frankenphp_main:
         if not self._is_installed():
             return public.ReturnMsg(False, self._t("not_installed"))
         domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else ""
-        if not domain or not self.__domain_re.match(domain):
+        is_ip = self._is_ipv4_address(domain)
+        if not domain or not (self.__domain_re.match(domain) or is_ip):
             return public.ReturnMsg(False, self._t("domain_format_invalid", domain=domain))
+        # HSTS (force_https) di server dengan sertifikat self-signed (wajib buat IP - lihat
+        # _site_block) bisa "mengunci" browser dari situs ini sampai 1 tahun begitu HSTS
+        # ke-cache (browser nolak connect sama sekali ke cert yang tidak dipercaya, tidak ada
+        # cara skip manual lagi kayak biasa) - terlalu berisiko buat diizinkan tanpa peringatan.
+        if is_ip and str(get.force_https).strip() == "1":
+            return public.ReturnMsg(False, self._t("ip_force_https_unsafe"))
 
         cfg = self._get_config()
         sites = cfg.get("sites", [])
@@ -1470,7 +1501,7 @@ class frankenphp_main:
         public.WriteFile(self.__config_file, json.dumps(cfg))
 
         result = self.GetServerStatus(get)
-        result["msg"] = self._t("site_added", domain=domain)
+        result["msg"] = self._t("site_added_ip" if is_ip else "site_added", domain=domain)
         result["status"] = True
         return result
 
@@ -1484,6 +1515,9 @@ class frankenphp_main:
         idx = next((i for i, s in enumerate(sites) if s["domain"] == domain), None)
         if idx is None:
             return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
+
+        if self._is_ipv4_address(domain) and str(get.force_https).strip() == "1":
+            return public.ReturnMsg(False, self._t("ip_force_https_unsafe"))
 
         old_site = sites[idx]
         site, err = self._build_site_fields(get, domain, self.__install_dir + "/www/" + domain, existing=old_site, all_sites=sites)
