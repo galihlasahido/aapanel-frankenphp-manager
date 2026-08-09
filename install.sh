@@ -89,6 +89,17 @@ Build_frankenphp_source(){
     mkdir -p "$build_dir"
     cd "$build_dir" || { log "Gagal masuk ke $build_dir"; exit 1; }
 
+    # PENTING - pakai toolchain glibc (native gcc host), BUKAN default musl static-php-cli.
+    # Root cause: extension swoole SIGSEGV total (ngerusak seluruh proses FrankenPHP, bukan cuma
+    # request individual) tepat di swoole_thread_init() - fungsi inti swoole yg selalu dipanggil
+    # tiap MINIT, TIDAK terkait fitur --enable-swoole-thread (itu fitur beda, sempat salah duga).
+    # SwooleTG itu variabel C++ thread_local, dan musl libc (dipakai spc buat static link)
+    # kelihatannya tidak menginisialisasi TLS block dengan benar utk OS thread yg dibuat FrankenPHP
+    # sendiri (lewat Go/cgo, bukan pthread_create biasa) - dicek langsung ke source swoole
+    # (src/core/base.cc), crash-nya identik & konsisten di titik itu di 2+ percobaan terpisah.
+    # glibc (toolchain native host, dynamic link) diharapkan tidak kena masalah TLS yang sama.
+    export SPC_LIBC=glibc
+
     log "Memasang dependency build dasar via apt (bisa beberapa menit)..."
     export DEBIAN_FRONTEND=noninteractive
     run_logged apt-get update -y
