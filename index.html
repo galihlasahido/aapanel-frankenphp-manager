@@ -316,6 +316,7 @@
 			installing_btn: 'Installing...', install_success: 'FrankenPHP installed successfully',
 			install_failed_check_log: 'Installation failed, check the log above', retry_install_btn: 'Try Install Again',
 			pick_min_1_ext: 'Select at least 1 extension',
+			ext_conflict: 'Extension conflict: {hook} already includes {pdo} - static-php-cli does not allow enabling both together. Uncheck one of them.',
 			add_domain_btn: '+ Add Domain',
 			no_domain_registered_click: 'No domain registered yet &mdash; click "+ Add Domain" to get started.',
 			ssl_auto_hint: 'Automatic SSL via Let\'s Encrypt (Caddy) for PHP and PHP+WAF modes &mdash; the domain\'s DNS must point to this server & ports 80/443 must be open.',
@@ -482,6 +483,7 @@
 			installing_btn: 'Menginstall...', install_success: 'FrankenPHP berhasil diinstall',
 			install_failed_check_log: 'Instalasi gagal, cek log di atas', retry_install_btn: 'Coba Install Lagi',
 			pick_min_1_ext: 'Pilih minimal 1 extension',
+			ext_conflict: 'Extension bentrok: {hook} sudah menyediakan {pdo} - static-php-cli tidak mengizinkan keduanya aktif bersamaan. Hilangkan centang salah satu.',
 			add_domain_btn: '+ Tambah Domain',
 			no_domain_registered_click: 'Belum ada domain terdaftar &mdash; klik "+ Tambah Domain" untuk mulai.',
 			ssl_auto_hint: 'SSL otomatis via Let\'s Encrypt (Caddy) untuk mode PHP dan PHP+WAF &mdash; DNS domain harus mengarah ke server ini &amp; port 80/443 terbuka.',
@@ -739,6 +741,17 @@
 			var exts = $('#fp_ext_checks input:checked').map(function () { return this.value; }).get();
 			if (!customVersion) { layer.msg(fpT('fill_php_version_first'), { icon: 2 }); return; }
 			if (!exts.length) { layer.msg(fpT('pick_min_1_ext'), { icon: 2 }); return; }
+			// static-php-cli tolak build kalau swoole-hook-X dan pdo_X yg disediakan hook itu
+			// sama-sama aktif (lihat validasi identik di backend Install()) - dicek di sini juga
+			// supaya user langsung tahu tanpa harus tunggu build 15-40 menit lalu gagal.
+			var conflictPairs = [['swoole-hook-pgsql', 'pdo_pgsql'], ['swoole-hook-sqlite', 'pdo_sqlite'], ['swoole-hook-odbc', 'pdo_odbc']];
+			for (var ci = 0; ci < conflictPairs.length; ci++) {
+				var hook = conflictPairs[ci][0], pdo = conflictPairs[ci][1];
+				if (exts.indexOf(hook) !== -1 && exts.indexOf(pdo) !== -1) {
+					layer.msg(fpT('ext_conflict').replace('{hook}', hook).replace('{pdo}', pdo), { icon: 2 });
+					return;
+				}
+			}
 			data.custom_php_version = customVersion;
 			data.extensions = exts.join(',');
 			startMsg = fpT('starting_custom_build').replace('{v}', customVersion).replace('{n}', exts.length);

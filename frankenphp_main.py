@@ -47,6 +47,7 @@ class frankenphp_main:
             "php_version_invalid": "Invalid PHP version format (e.g. 8.2 or 8.2.28)",
             "pick_min_1_ext": "Select at least 1 extension",
             "unknown_extensions": "Unknown extension(s): {list}",
+            "conflicting_extensions": "Extension conflict: {hook} already includes {pdo} - static-php-cli does not allow enabling both together. Remove {pdo} from the list (or disable {hook}) and try again.",
             "custom_build_started": "Custom build started in the background (can take 15-40+ minutes, static-php-cli {spc_version}) - safe to leave, progress also appears in aaPanel's Task menu",
             "unknown_php_version_choice": "Unknown PHP version choice: {version}",
             "internal_release_tag_invalid": "Internal release tag is invalid",
@@ -133,6 +134,7 @@ class frankenphp_main:
             "php_version_invalid": "Format versi PHP tidak valid (contoh: 8.2 atau 8.2.28)",
             "pick_min_1_ext": "Pilih minimal 1 extension",
             "unknown_extensions": "Extension tidak dikenal: {list}",
+            "conflicting_extensions": "Extension bentrok: {hook} sudah menyediakan {pdo} - static-php-cli tidak mengizinkan keduanya aktif bersamaan. Hapus {pdo} dari daftar (atau nonaktifkan {hook}) lalu coba lagi.",
             "custom_build_started": "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli {spc_version}) - aman ditinggal, progress juga muncul di menu Task aaPanel",
             "unknown_php_version_choice": "Pilihan versi PHP tidak dikenal: {version}",
             "internal_release_tag_invalid": "Tag rilis internal tidak valid",
@@ -958,6 +960,19 @@ class frankenphp_main:
             if unknown:
                 return public.ReturnMsg(False, self._t("unknown_extensions", list=", ".join(unknown)))
 
+            # static-php-cli tolak build kalau swoole-hook-X dan pdo_X (yg disediakan hook itu)
+            # sama-sama aktif - dicek langsung di source spc (src/SPC/builder/extension/
+            # swoole_hook_{pgsql,sqlite,odbc}.php: method validate()). swoole-hook-mysql TIDAK
+            # kena aturan ini (tidak override validate()), jadi tidak dicek di sini.
+            ext_set = set(extensions)
+            for hook, pdo_ext in (
+                ("swoole-hook-pgsql", "pdo_pgsql"),
+                ("swoole-hook-sqlite", "pdo_sqlite"),
+                ("swoole-hook-odbc", "pdo_odbc"),
+            ):
+                if hook in ext_set and pdo_ext in ext_set:
+                    return public.ReturnMsg(False, self._t("conflicting_extensions", hook=hook, pdo=pdo_ext))
+
             public.ExecShell("echo '' > %s" % self.__install_log)
             shell_cmd = "bash %s/install.sh install custom %s %s %s" % (
                 self.__plugin_dir, custom_version, ",".join(extensions), spc_version
@@ -969,7 +984,7 @@ class frankenphp_main:
             # di badge/message-box Task aaPanel sendiri, di luar polling GetInstallLog
             # milik plugin ini.
             self._add_soft_install_task("Install FrankenPHP (build custom PHP %s)" % custom_version, shell_cmd)
-            return public.ReturnMsg(True, "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli " + spc_version + ") - aman ditinggal, progress juga muncul di menu Task aaPanel")
+            return public.ReturnMsg(True, self._t("custom_build_started", spc_version=spc_version))
 
         if php_version not in self.__php_version_tags:
             return public.ReturnMsg(False, self._t("unknown_php_version_choice", version=php_version))
@@ -980,7 +995,7 @@ class frankenphp_main:
         public.ExecShell("echo '' > %s" % self.__install_log)
         shell_cmd = "bash %s/install.sh install %s" % (self.__plugin_dir, release_tag)
         self._add_soft_install_task("Install FrankenPHP", shell_cmd)
-        return public.ReturnMsg(True, "Instalasi dimulai di background - aman ditinggal, progress juga muncul di menu Task aaPanel")
+        return public.ReturnMsg(True, self._t("install_started"))
 
     def GetInstallLog(self, get):
         if not os.path.exists(self.__install_log):
