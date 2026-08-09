@@ -392,6 +392,19 @@ Uninstall_frankenphp(){
 action=$1
 arg2=$2
 if [ "$action" == "install" ]; then
+    # PENTING - cegah 2 proses install jalan bersamaan (kejadian nyata: satu dipicu manual buat
+    # testing, satu lagi dipicu user beneran lewat panel di waktu yang hampir sama - build custom
+    # `rm -rf "$build_dir"` di awal HANCURIN file punya proses lain yang masih pakai direktori
+    # sama, muncul sebagai error aneh yang gak jelas nyambung ke akar masalahnya sama sekali,
+    # mis. "Cannot open phar archive ... for reading" - bukan pesan "proses lain lagi jalan").
+    # Lock file di /tmp (BUKAN di dalam $install_dir) supaya tetap ada meski install_dir kena
+    # rm -rf pas proses yang pegang lock lagi jalan.
+    exec 200>/tmp/frankenphp_build.lock
+    if ! flock -n 200; then
+        log "Instalasi gagal dimulai - ada proses install/build FrankenPHP LAIN yang sedang berjalan di server ini (mis. dipicu dari tab/sesi panel lain) - tunggu sampai proses itu selesai dulu sebelum mulai yang baru, supaya tidak saling menimpa file satu sama lain."
+        exit 1
+    fi
+
     : > "$install_log"
     : > "$panel_exec_log"
     if [ "$arg2" == "custom" ]; then
