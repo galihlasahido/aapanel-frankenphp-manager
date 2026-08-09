@@ -145,11 +145,17 @@ Build_frankenphp_source(){
 
     log "Compile PHP $php_version (static, ZTS) + FrankenPHP dengan extension: $extensions ..."
     log "Ini bagian paling lama (15-40+ menit tergantung CPU) - tunggu sampai muncul 'Instalasi selesai' atau pesan gagal."
-    # --with-added-patch fix_swoole_curl_openssl_tsl.php: source php-src baru di-extract SAAT
-    # `spc build` jalan (bukan saat `spc download`), jadi patch file source cuma bisa dilakukan
-    # lewat hook resmi spc di titik 'before-php-make' (setelah extract, sebelum compile) - lihat
-    # isi file patch itu buat detail bug yang diperbaiki (swoole+curl vs OpenSSL modern, ZTS build).
-    if ! run_logged ./spc build "$extensions" --build-frankenphp --enable-zts --with-added-patch="$plugin_dir/patches/fix_swoole_curl_openssl_tsl.php"; then
+    # --with-added-patch (bisa lebih dari satu, spc jalanin semuanya): source php-src baru
+    # di-extract SAAT `spc build` jalan (bukan saat `spc download`), jadi patch file source cuma
+    # bisa dilakukan lewat hook resmi spc di titik-titik tertentu - lihat isi tiap file patch buat
+    # detail bug yang diperbaiki:
+    #  - fix_swoole_curl_openssl_tsl.php: swoole+curl gagal compile vs OpenSSL modern (ZTS build)
+    #  - fix_swoole_thread_disable.php:   swoole-thread mode bikin FrankenPHP SIGSEGV saat start
+    #    (dua sistem sama-sama coba kelola native thread) - dipaksa mati, fitur coroutine/async
+    #    swoole biasa (Server, coroutine, channel, dll) tidak kepengaruh sama sekali.
+    if ! run_logged ./spc build "$extensions" --build-frankenphp --enable-zts \
+        --with-added-patch="$plugin_dir/patches/fix_swoole_curl_openssl_tsl.php" \
+        --with-added-patch="$plugin_dir/patches/fix_swoole_thread_disable.php"; then
         log "Build gagal. Cek log di atas untuk detail error dari spc (biasanya kombinasi extension yang bentrok atau dependency C library yang belum lengkap)."
         exit 1
     fi
