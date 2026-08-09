@@ -118,7 +118,11 @@ Build_frankenphp_source(){
     # spc manggil api.github.com puluhan kali (cek rilis tiap source) - tanpa token, limitnya
     # cuma 60 request/jam PER-IP (gampang kena 403, apalagi kalau IP server dipakai bareng),
     # dengan token naik jadi 5000/jam. Token disimpan lewat menu plugin (opsional).
-    token_file="$install_dir/data/.github_token"
+    # PENTING - sengaja di $plugin_dir (BUKAN $install_dir) - token ini preferensi user, harus
+    # tetap ada meski FrankenPHP di-uninstall/install ulang ($install_dir kena rm -rf total tiap
+    # uninstall). Ketemu langsung: token ilang gara-gara ini pas testing uninstall+reinstall,
+    # bikin build custom berikutnya kena rate limit GitHub API (403 berulang -> build gagal).
+    token_file="$plugin_dir/data/.github_token"
     if [ -f "$token_file" ]; then
         export GITHUB_TOKEN
         GITHUB_TOKEN=$(cat "$token_file")

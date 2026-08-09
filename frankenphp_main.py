@@ -1020,7 +1020,12 @@ class frankenphp_main:
     __spc_default_version = "2.8.5"
     __spc_version_re = re.compile(r'^\d+\.\d+\.\d+$')
     __spc_config_file = __install_dir + "/data/spc-extensions.json"
-    __github_token_file = __install_dir + "/data/.github_token"
+    # Sengaja di dalam __plugin_dir (BUKAN __install_dir) - token ini preferensi user, bukan
+    # bagian dari state instalasi FrankenPHP, jadi harus tetap ada meski di-uninstall/install
+    # ulang (__install_dir kena rm -rf total tiap uninstall). Ketemu langsung: token hilang
+    # gara-gara ini pas testing uninstall+reinstall, bikin build custom berikutnya kena rate
+    # limit GitHub API (403 berulang -> build gagal) karena tidak ada token lagi.
+    __github_token_file = __plugin_dir + "/data/.github_token"
 
     def GetGithubTokenStatus(self, get):
         return {"status": True, "set": os.path.exists(self.__github_token_file)}
