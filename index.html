@@ -360,6 +360,18 @@
 			waf_methods_hint: 'Leave all unchecked = use OWASP CRS default (only GET/HEAD/POST/OPTIONS allowed, and ALL method-override attempts via the <span class="fp-mono">_method</span> parameter/<span class="fp-mono">X-HTTP-Method-Override</span> header are automatically rejected as an attack &mdash; this would block Laravel/Symfony forms using <span class="fp-mono">@method(\'PUT\')</span> etc). Check the methods this app uses (e.g. PUT/PATCH/DELETE) so both the real method and overrides to it are allowed, the rest stay blocked.',
 			custom_rule_placeholder: 'optional, ModSecurity/Coraza SecRule syntax, one or more lines',
 			custom_rule_hint: 'Runs AFTER the OWASP CRS rules. Example: <span class="fp-mono">SecRule REQUEST_HEADERS:User-Agent "badbot" "id:1000001,deny,status:403,log"</span>. Use ID &ge; 1000000 (IDs 900000-900999 are reserved internally, will be rejected). Must not contain a backtick. Automatically validated before being applied &mdash; if the syntax is wrong, the change is discarded and the site won\'t go down.',
+			waf_rule_mode_simple: 'Simple', waf_rule_mode_advanced: 'Advanced',
+			waf_rule_tpl_user_agent: 'Block by User-Agent', waf_rule_tpl_header: 'Block by request header',
+			waf_rule_tpl_uri: 'Block by URI path', waf_rule_tpl_arg: 'Block by query/form field',
+			waf_rule_op_contains: 'contains', waf_rule_op_equals: 'equals exactly', waf_rule_op_starts_with: 'starts with', waf_rule_op_regex: 'matches regex (advanced)',
+			waf_rule_action_deny: 'Block (403)', waf_rule_action_log: 'Log only (detection)',
+			waf_rule_header_name_placeholder: 'header name, e.g. X-Forwarded-For',
+			waf_rule_arg_name_placeholder: 'field name, e.g. promo_code',
+			waf_rule_value_placeholder: 'value to match',
+			waf_rule_add_btn: '+ Add rule', waf_rule_delete_btn: 'Delete',
+			waf_rule_preview_toggle: 'Preview generated rule', waf_rule_empty: 'No custom rules yet.',
+			waf_rule_unrecognized: 'This rule doesn\'t match a Simple-mode template (written directly, or edited in Advanced) - shown as-is, still included when saved. Switch to Advanced to edit it.',
+			waf_rule_id_label: 'Rule ID:',
 			waf_whitelist_placeholder: 'optional, one IP/CIDR per line, e.g. 203.0.113.5 or 10.0.0.0/8',
 			waf_whitelist_hint2: 'IPs on this list FULLY bypass the WAF (no rule is evaluated at all) &mdash; use for trusted office/monitoring IPs.',
 			waf_blacklist_placeholder: 'optional, one IP/CIDR per line',
@@ -542,6 +554,18 @@
 			waf_methods_hint: 'Kosongkan semua = pakai default OWASP CRS (hanya GET/HEAD/POST/OPTIONS diizinkan, dan SEMUA percobaan override method lewat parameter <span class="fp-mono">_method</span>/header <span class="fp-mono">X-HTTP-Method-Override</span> otomatis ditolak sebagai serangan &mdash; ini akan memblokir form Laravel/Symfony yang pakai <span class="fp-mono">@method(\'PUT\')</span> dkk). Centang method yang dipakai app ini (mis. PUT/PATCH/DELETE) supaya method asli maupun override ke method tsb diizinkan, sisanya tetap ditolak.',
 			custom_rule_placeholder: 'opsional, syntax ModSecurity/Coraza SecRule, satu atau lebih baris',
 			custom_rule_hint: 'Dijalankan SETELAH rule OWASP CRS. Contoh: <span class="fp-mono">SecRule REQUEST_HEADERS:User-Agent "badbot" "id:1000001,deny,status:403,log"</span>. Pakai ID &ge; 1000000 (ID 900000-900999 dipakai internal, akan ditolak). Tidak boleh mengandung backtick. Divalidasi otomatis sebelum diterapkan &mdash; kalau syntax salah, perubahan dibatalkan dan situs tidak akan down.',
+			waf_rule_mode_simple: 'Simple', waf_rule_mode_advanced: 'Advanced',
+			waf_rule_tpl_user_agent: 'Blokir berdasar User-Agent', waf_rule_tpl_header: 'Blokir berdasar header request',
+			waf_rule_tpl_uri: 'Blokir berdasar path URI', waf_rule_tpl_arg: 'Blokir berdasar field query/form',
+			waf_rule_op_contains: 'mengandung', waf_rule_op_equals: 'sama persis', waf_rule_op_starts_with: 'diawali dengan', waf_rule_op_regex: 'cocok regex (advanced)',
+			waf_rule_action_deny: 'Blokir (403)', waf_rule_action_log: 'Cuma log (deteksi)',
+			waf_rule_header_name_placeholder: 'nama header, mis. X-Forwarded-For',
+			waf_rule_arg_name_placeholder: 'nama field, mis. promo_code',
+			waf_rule_value_placeholder: 'value yang dicocokkan',
+			waf_rule_add_btn: '+ Tambah rule', waf_rule_delete_btn: 'Hapus',
+			waf_rule_preview_toggle: 'Lihat rule yang dihasilkan', waf_rule_empty: 'Belum ada custom rule.',
+			waf_rule_unrecognized: 'Rule ini tidak cocok template mode Simple (ditulis manual, atau diedit di Advanced) - ditampilkan apa adanya, tetap ikut disimpan. Ganti ke Advanced buat mengeditnya.',
+			waf_rule_id_label: 'Rule ID:',
 			waf_whitelist_placeholder: 'opsional, satu IP/CIDR per baris, mis. 203.0.113.5 atau 10.0.0.0/8',
 			waf_whitelist_hint2: 'IP di daftar ini SEPENUHNYA melewati WAF (tidak dievaluasi rule apa pun) &mdash; pakai untuk IP kantor/monitoring tepercaya.',
 			waf_blacklist_placeholder: 'opsional, satu IP/CIDR per baris',
@@ -1809,6 +1833,214 @@
 		}).join('') + '</div>';
 	}
 
+	// ---------------- WAF custom-rule builder (Simple/Advanced) ----------------
+	// Mode Simple murni lapisan UI di atas textarea raw yang sudah ada (#fp_s_waf_custom) -
+	// backend TIDAK berubah sama sekali, tetap terima/validasi teks SecRule biasa. Kartu
+	// men-generate teks yang sama persis yang sebelumnya harus diketik manual, dan bisa
+	// mem-parse balik teks itu jadi kartu (best-effort - baris yang tidak cocok pola generate
+	// kita sendiri otomatis jadi 1 kartu "raw" gabungan di akhir, tetap ikut kesimpan, tidak
+	// pernah hilang diam-diam - cuma urutan relatif ke rule terstruktur lain tidak dijamin).
+	var fpWafRuleTemplates = [
+		{ v: 'user_agent', labelKey: 'waf_rule_tpl_user_agent', target: 'REQUEST_HEADERS:User-Agent', hasName: false },
+		{ v: 'header', labelKey: 'waf_rule_tpl_header', target: 'REQUEST_HEADERS:', hasName: true, namePlaceholderKey: 'waf_rule_header_name_placeholder' },
+		{ v: 'uri', labelKey: 'waf_rule_tpl_uri', target: 'REQUEST_URI', hasName: false },
+		{ v: 'arg', labelKey: 'waf_rule_tpl_arg', target: 'ARGS:', hasName: true, namePlaceholderKey: 'waf_rule_arg_name_placeholder' }
+	];
+	var fpWafRuleOps = ['contains', 'equals', 'starts_with', 'regex'];
+	var fpWafRuleActions = ['deny', 'log'];
+	var fpWafRules = [];
+
+	function fpWafRuleTemplateByValue(v) {
+		for (var i = 0; i < fpWafRuleTemplates.length; i++) if (fpWafRuleTemplates[i].v === v) return fpWafRuleTemplates[i];
+		return null;
+	}
+	function fpRegexEscape(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+	function fpWafEscValue(v) { return String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
+	function fpWafUnescValue(v) { return String(v).replace(/\\(.)/g, '$1'); }
+
+	function fpWafRuleTarget(rule) {
+		var tpl = fpWafRuleTemplateByValue(rule.template);
+		if (!tpl) return null;
+		return tpl.hasName ? (tpl.target + (rule.name || '')) : tpl.target;
+	}
+
+	function fpWafRuleToText(rule) {
+		if (rule.template === 'raw') return rule.raw || '';
+		var target = fpWafRuleTarget(rule);
+		if (!target || !rule.value || (fpWafRuleTemplateByValue(rule.template).hasName && !rule.name)) return '';
+		var val = rule.op === 'starts_with' ? '^' + fpRegexEscape(rule.value) : rule.value;
+		var opPrefix = rule.op === 'contains' ? '@contains ' : rule.op === 'equals' ? '@streq ' : '@rx ';
+		var action = rule.action === 'log' ? 'pass,log' : 'deny,status:403,log';
+		return 'SecRule ' + target + ' "' + opPrefix + fpWafEscValue(val) + '" "id:' + rule.id + ',' + action + '"';
+	}
+
+	var fpWafRuleLineRe = /^SecRule\s+(REQUEST_HEADERS:User-Agent|REQUEST_HEADERS:([^\s"]+)|REQUEST_URI|ARGS:([^\s"]+))\s+"(@contains|@streq|@rx)\s((?:[^"\\]|\\.)*)"\s+"id:(\d+),(deny,status:403|pass),log"\s*$/;
+
+	function fpWafParseLine(line) {
+		var m = line.match(fpWafRuleLineRe);
+		if (!m) return null;
+		var targetFull = m[1], headerName = m[2], argName = m[3], op = m[4], rawVal = m[5], id = m[6], actionPart = m[7];
+		var template, name = '';
+		if (targetFull === 'REQUEST_HEADERS:User-Agent') { template = 'user_agent'; }
+		else if (headerName) { template = 'header'; name = headerName; }
+		else if (targetFull === 'REQUEST_URI') { template = 'uri'; }
+		else if (argName) { template = 'arg'; name = argName; }
+		else return null;
+		var unesc = fpWafUnescValue(rawVal);
+		var opKey, value = unesc;
+		if (op === '@contains') opKey = 'contains';
+		else if (op === '@streq') opKey = 'equals';
+		else {
+			// @rx bisa jadi hasil generate kita sendiri buat "starts with" (^ + fpRegexEscape(literal))
+			// ATAU regex asli yang diketik manual user yang KEBETULAN diawali ^ (anchor beneran) -
+			// dua-duanya sama persis bentuknya secara tekstual, jadi TIDAK bisa dibedakan cuma dari
+			// "diawali ^". Satu-satunya cara aman: cek apakah sisi kanan ^ itu PERSIS bisa dihasilkan
+			// dari fpRegexEscape(suatu literal) - kalau reversible sempurna, aman dianggap starts_with
+			// kita; kalau tidak (ada metachar regex asli yang tidak match pola escape kita), HARUS
+			// dianggap regex biasa apa adanya - jangan coba "unescape" sepihak (itu yang bikin bug:
+			// literal seperti \d di ^[A-Z]{3}\d+$ kepotong jadi d, merusak regex asli user).
+			opKey = 'regex';
+			if (unesc.charAt(0) === '^') {
+				var literal = unesc.slice(1).replace(/\\([.*+?^${}()|[\]\\])/g, '$1');
+				if (fpRegexEscape(literal) === unesc.slice(1)) { opKey = 'starts_with'; value = literal; }
+			}
+		}
+		return { id: parseInt(id, 10), template: template, name: name, op: opKey, value: value, action: actionPart === 'pass' ? 'log' : 'deny' };
+	}
+
+	function fpWafParseRules(text) {
+		var lines = (text || '').split('\n');
+		var rules = [], rawBuffer = [];
+		lines.forEach(function (line) {
+			var trimmed = line.trim();
+			if (!trimmed) return;
+			var parsed = fpWafParseLine(trimmed);
+			if (parsed) rules.push(parsed); else rawBuffer.push(line);
+		});
+		if (rawBuffer.length) rules.push({ template: 'raw', raw: rawBuffer.join('\n') });
+		return rules;
+	}
+
+	function fpWafNextRuleId(rules) {
+		var max = 1000000;
+		rules.forEach(function (r) { if (r.id && r.id >= max) max = r.id + 1; });
+		return max;
+	}
+
+	function fpRenderWafRuleCard(rule, idx) {
+		if (rule.template === 'raw') {
+			return '<div class="fp-waf-rule-card" data-idx="' + idx + '" style="border:1px dashed #d8dce2;border-radius:6px;padding:10px;margin-bottom:8px;">' +
+				'<div class="fp-hint" style="margin-bottom:6px;">' + fpT('waf_rule_unrecognized') + '</div>' +
+				'<pre class="fp-mono" style="background:#f5f6f8;padding:8px;border-radius:6px;font-size:12px;white-space:pre-wrap;margin:0;">' + fpEsc(rule.raw) + '</pre>' +
+				'</div>';
+		}
+		var tpl = fpWafRuleTemplateByValue(rule.template) || fpWafRuleTemplates[0];
+		var templateOptions = fpWafRuleTemplates.map(function (t) {
+			return '<option value="' + t.v + '"' + (t.v === rule.template ? ' selected' : '') + '>' + fpT(t.labelKey) + '</option>';
+		}).join('');
+		var opOptions = fpWafRuleOps.map(function (op) {
+			return '<option value="' + op + '"' + (op === rule.op ? ' selected' : '') + '>' + fpT('waf_rule_op_' + op) + '</option>';
+		}).join('');
+		var actionOptions = fpWafRuleActions.map(function (a) {
+			return '<option value="' + a + '"' + (a === rule.action ? ' selected' : '') + '>' + fpT('waf_rule_action_' + a) + '</option>';
+		}).join('');
+		var nameField = tpl.hasName
+			? '<input class="fp-input fp-waf-rule-name" type="text" value="' + fpEsc(rule.name || '') + '" placeholder="' + fpT(tpl.namePlaceholderKey) + '" style="max-width:220px;margin-right:6px;">'
+			: '';
+		return '' +
+			'<div class="fp-waf-rule-card" data-idx="' + idx + '" style="border:1px solid #eceff2;border-radius:6px;padding:10px;margin-bottom:8px;">' +
+			'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">' +
+			'<select class="fp-select fp-waf-rule-template" style="max-width:260px;">' + templateOptions + '</select>' +
+			'<span class="fp-hint fp-waf-rule-id">' + fpT('waf_rule_id_label') + ' ' + rule.id + '</span>' +
+			'<button type="button" class="btn btn-danger btn-sm fp-waf-rule-delete">' + fpT('waf_rule_delete_btn') + '</button>' +
+			'</div>' +
+			'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px;">' +
+			nameField +
+			'<select class="fp-select fp-waf-rule-op" style="max-width:190px;">' + opOptions + '</select>' +
+			'<input class="fp-input fp-waf-rule-value" type="text" value="' + fpEsc(rule.value || '') + '" placeholder="' + fpT('waf_rule_value_placeholder') + '" style="flex:1;min-width:150px;">' +
+			'</div>' +
+			'<div style="margin-bottom:6px;"><select class="fp-select fp-waf-rule-action" style="max-width:200px;">' + actionOptions + '</select></div>' +
+			'<details><summary class="fp-hint" style="cursor:pointer;">' + fpT('waf_rule_preview_toggle') + '</summary>' +
+			'<pre class="fp-mono fp-waf-rule-preview" style="background:#1a1d24;color:#d3d7de;padding:8px;border-radius:6px;font-size:11px;white-space:pre-wrap;margin-top:4px;">' + fpEsc(fpWafRuleToText(rule)) + '</pre></details>' +
+			'</div>';
+	}
+
+	function fpRenderWafCustomRuleBuilder(rawText) {
+		return '' +
+			'<div class="fp-waf-rule-builder" id="fp_waf_rule_builder">' +
+			'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+			'<div class="fp-form-label" style="margin:0;">' + fpT('custom_rule') + '</div>' +
+			fpSeg('fp_waf_rule_mode', [{ v: 'simple', t: fpT('waf_rule_mode_simple') }, { v: 'advanced', t: fpT('waf_rule_mode_advanced') }], 'simple') +
+			'</div>' +
+			'<div id="fp_waf_rule_cards"></div>' +
+			'<button type="button" class="btn btn-default btn-sm" id="fp_waf_rule_add">' + fpT('waf_rule_add_btn') + '</button>' +
+			'<textarea class="fp-textarea" id="fp_s_waf_custom" style="display:none;margin-top:8px;" placeholder="' + fpT('custom_rule_placeholder') + '">' + fpEsc(rawText) + '</textarea>' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('custom_rule_hint') + '</div>' +
+			'</div>';
+	}
+
+	function fpWafRuleBuilderSync() {
+		var text = fpWafRules.map(fpWafRuleToText).filter(function (t) { return t; }).join('\n');
+		$('#fp_s_waf_custom').val(text);
+	}
+
+	function fpWafRuleBuilderRenderCards() {
+		var $cards = $('#fp_waf_rule_cards');
+		$cards.html(fpWafRules.length ? fpWafRules.map(fpRenderWafRuleCard).join('') : '<div class="fp-hint">' + fpT('waf_rule_empty') + '</div>');
+		fpWafRuleBuilderSync();
+		fpFixLayerBox($('#fp_plugin').closest('.layui-layer'));
+	}
+
+	function fpWafRuleBuilderBind() {
+		fpWafRules = fpWafParseRules($('#fp_s_waf_custom').val());
+		fpWafRuleBuilderRenderCards();
+
+		$('#fp_waf_rule_add').off('click').on('click', function () {
+			fpWafRules.push({ id: fpWafNextRuleId(fpWafRules), template: 'user_agent', name: '', op: 'contains', value: '', action: 'deny' });
+			fpWafRuleBuilderRenderCards();
+		});
+		$('#fp_waf_rule_cards').off('click', '.fp-waf-rule-delete').on('click', '.fp-waf-rule-delete', function () {
+			fpWafRules.splice($(this).closest('.fp-waf-rule-card').data('idx'), 1);
+			fpWafRuleBuilderRenderCards();
+		});
+		$('#fp_waf_rule_cards').off('change', '.fp-waf-rule-template').on('change', '.fp-waf-rule-template', function () {
+			var idx = $(this).closest('.fp-waf-rule-card').data('idx');
+			fpWafRules[idx].template = $(this).val();
+			fpWafRules[idx].name = '';
+			fpWafRuleBuilderRenderCards();
+		});
+		$('#fp_waf_rule_cards').off('input change', '.fp-waf-rule-name, .fp-waf-rule-value').on('input change', '.fp-waf-rule-name, .fp-waf-rule-value', function () {
+			var idx = $(this).closest('.fp-waf-rule-card').data('idx');
+			var field = $(this).hasClass('fp-waf-rule-name') ? 'name' : 'value';
+			fpWafRules[idx][field] = $(this).val();
+			$(this).closest('.fp-waf-rule-card').find('.fp-waf-rule-preview').text(fpWafRuleToText(fpWafRules[idx]));
+			fpWafRuleBuilderSync();
+		});
+		$('#fp_waf_rule_cards').off('change', '.fp-waf-rule-op, .fp-waf-rule-action').on('change', '.fp-waf-rule-op, .fp-waf-rule-action', function () {
+			var idx = $(this).closest('.fp-waf-rule-card').data('idx');
+			var field = $(this).hasClass('fp-waf-rule-op') ? 'op' : 'action';
+			fpWafRules[idx][field] = $(this).val();
+			$(this).closest('.fp-waf-rule-card').find('.fp-waf-rule-preview').text(fpWafRuleToText(fpWafRules[idx]));
+			fpWafRuleBuilderSync();
+		});
+		$('#fp_waf_rule_mode .fp-seg-opt').off('click').on('click', function () {
+			var mode = $(this).data('val');
+			$('#fp_waf_rule_mode .fp-seg-opt').removeClass('sel');
+			$(this).addClass('sel');
+			if (mode === 'advanced') {
+				fpWafRuleBuilderSync();
+				$('#fp_waf_rule_cards, #fp_waf_rule_add').hide();
+				$('#fp_s_waf_custom').show();
+			} else {
+				fpWafRules = fpWafParseRules($('#fp_s_waf_custom').val());
+				$('#fp_s_waf_custom').hide();
+				$('#fp_waf_rule_cards, #fp_waf_rule_add').show();
+				fpWafRuleBuilderRenderCards();
+			}
+			fpFixLayerBox($('#fp_plugin').closest('.layui-layer'));
+		});
+	}
+
 	function fpSiteForm(site) {
 		var isEdit = !!site;
 		var mode = site ? (site.mode || 'php') : 'php';
@@ -1867,8 +2099,7 @@
 			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('allowed_http_methods') + '</div><div class="fp-form-field"><div class="fp-method-checks" id="fp_s_waf_methods">' +
 			httpMethods.map(function (m) { return '<label><input type="checkbox" value="' + m + '"' + (wafAllowedMethodsVal.indexOf(m) !== -1 ? ' checked' : '') + '> ' + m + '</label>'; }).join('') +
 			'</div><div class="fp-hint" style="margin-top:4px;">' + fpT('waf_methods_hint') + '</div></div></div>' +
-			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('custom_rule') + '</div><div class="fp-form-field"><textarea class="fp-textarea" id="fp_s_waf_custom" placeholder="' + fpT('custom_rule_placeholder') + '">' + fpEsc(wafCustomRulesVal) + '</textarea>' +
-			'<div class="fp-hint" style="margin-top:4px;">' + fpT('custom_rule_hint') + '</div></div></div>' +
+			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-field" style="width:100%;">' + fpRenderWafCustomRuleBuilder(wafCustomRulesVal) + '</div></div>' +
 			'</div>' +
 			'<div class="fp-subsection">' +
 			'<div class="fp-subsection-title">' + fpT('ip_whitelist_blacklist') + '</div>' +
@@ -1950,6 +2181,7 @@
 
 		$('#fp_domain_form_view').html(content);
 		fpShowDomainForm();
+		fpWafRuleBuilderBind();
 
 		function toggleFields() {
 			var m = $('#fp_s_mode').val();
