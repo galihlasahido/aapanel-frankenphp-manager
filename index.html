@@ -379,6 +379,10 @@
 			email_placeholder: "Let's Encrypt notifications", add_btn: 'Add',
 			not_responding: 'not responding', adding_domain: 'Adding domain...',
 			confirm_delete_domain: 'Delete domain "{domain}" from FrankenPHP? (files in the document root will NOT be deleted)',
+			danger_zone_title: 'Danger Zone', uninstall_plugin_btn: 'Uninstall FrankenPHP',
+			uninstall_plugin_hint: 'Completely removes the FrankenPHP service, binary, and configuration (all registered domains, WAF settings, etc.) from this server. Project files themselves are NOT deleted.',
+			confirm_uninstall_warning: 'Uninstall FrankenPHP completely? This removes the service, binary, and ALL domain configuration (WAF, load balancer, worker mode, etc.) from this server - CANNOT be undone. Project files in the document root are NOT deleted.',
+			confirm_uninstall_btn: 'Yes, uninstall', uninstalling: 'Uninstalling...',
 			confirmation_title: 'Confirmation', deleting: 'Deleting...', domain_required: 'Domain is required',
 			about_plugin_desc: 'FrankenPHP Manager manages FrankenPHP (Caddy + embedded PHP) as a standalone service on this server, complete with WAF (Coraza / OWASP CRS), load balancer, and per-domain CC Defense protection &mdash; separate from any existing Nginx configuration/sites.',
 			range_today: 'Today', range_7d: '7 Days', range_30d: '30 Days', range_all: 'All Time',
@@ -557,6 +561,10 @@
 			email_placeholder: "notifikasi Let's Encrypt", add_btn: 'Tambah',
 			not_responding: 'tidak merespons', adding_domain: 'Menambahkan domain...',
 			confirm_delete_domain: 'Hapus domain "{domain}" dari FrankenPHP? (file di document root TIDAK akan dihapus)',
+			danger_zone_title: 'Danger Zone', uninstall_plugin_btn: 'Uninstall FrankenPHP',
+			uninstall_plugin_hint: 'Menghapus total service FrankenPHP, binary, dan konfigurasi (semua domain terdaftar, pengaturan WAF, dll) dari server ini. File project sendiri TIDAK ikut dihapus.',
+			confirm_uninstall_warning: 'Uninstall FrankenPHP sepenuhnya? Ini menghapus service, binary, dan SEMUA konfigurasi domain (WAF, load balancer, worker mode, dll) dari server ini - TIDAK BISA dibatalkan. File project di document root tidak ikut terhapus.',
+			confirm_uninstall_btn: 'Ya, uninstall', uninstalling: 'Meng-uninstall...',
 			confirmation_title: 'Konfirmasi', deleting: 'Menghapus...', domain_required: 'Domain wajib diisi',
 			about_plugin_desc: 'FrankenPHP Manager mengelola FrankenPHP (Caddy + PHP embedded) sebagai service mandiri di server ini, lengkap dengan WAF (Coraza / OWASP CRS), load balancer, dan proteksi CC Defense per domain &mdash; terpisah dari konfigurasi Nginx/situs lain yang sudah ada.',
 			range_today: 'Hari ini', range_7d: '7 Hari', range_30d: '30 Hari', range_all: 'Semua Waktu',
@@ -1625,10 +1633,28 @@
 			'<div class="fp-section-title">' + fpT('php_config_title') + '</div>' +
 			'<div class="fp-box" id="fp_php_config_box" style="margin-bottom:16px;"><div class="fp-hint" style="padding:8px 0;">' + fpT('loading') + '</div></div>' +
 			'<div class="fp-section-title">PHP CLI FrankenPHP</div>' +
-			'<div class="fp-box" id="fp_php_cli_box"><div class="fp-hint" style="padding:8px 0;">' + fpT('loading') + '</div></div>';
+			'<div class="fp-box" id="fp_php_cli_box" style="margin-bottom:16px;"><div class="fp-hint" style="padding:8px 0;">' + fpT('loading') + '</div></div>' +
+			'<div class="fp-section-title">' + fpT('danger_zone_title') + '</div>' +
+			'<div class="fp-box" style="border:1px solid #f5c2c7;">' +
+			'<div class="fp-hint" style="margin-bottom:10px;">' + fpT('uninstall_plugin_hint') + '</div>' +
+			'<button type="button" class="btn btn-danger btn-sm" id="fp_uninstall_btn">' + fpT('uninstall_plugin_btn') + '</button>' +
+			'</div>';
 		$('#fp_panel_settings').html(html);
 		fpLoadPhpConfig();
 		fpLoadPhpCliWrapper();
+		$('#fp_uninstall_btn').click(fpUninstallPlugin);
+	}
+
+	function fpUninstallPlugin() {
+		layer.confirm(fpT('confirm_uninstall_warning'), { icon: 3, title: fpT('confirmation_title'), btn: [fpT('confirm_uninstall_btn'), fpT('cancel')] }, function (idx) {
+			layer.close(idx);
+			var loadT = layer.msg(fpT('uninstalling'), { icon: 16, time: 0 });
+			fpAjaxPost('Uninstall', {}, function (r) {
+				layer.close(loadT);
+				layer.msg(r.msg, { icon: r.status ? 1 : 2, time: 4000 });
+				if (r.status) { setTimeout(fpInit, 1000); }
+			});
+		});
 	}
 
 	function fpRenderPhpCliUsage(path) {
