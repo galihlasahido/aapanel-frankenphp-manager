@@ -5,6 +5,7 @@ import sys, os, json, time, re, sqlite3, socket
 os.chdir("/www/server/panel")
 sys.path.append("class/")
 import public
+import panelTask
 
 
 class frankenphp_main:
@@ -714,11 +715,19 @@ class frankenphp_main:
                 return public.ReturnMsg(False, "Extension tidak dikenal: " + ", ".join(unknown))
 
             public.ExecShell("echo '' > %s" % self.__install_log)
-            public.ExecShell(
-                "nohup bash %s/install.sh install custom %s %s %s >> %s 2>&1 &" %
-                (self.__plugin_dir, custom_version, ",".join(extensions), spc_version, self.__install_log)
+            shell_cmd = "bash %s/install.sh install custom %s %s %s" % (
+                self.__plugin_dir, custom_version, ",".join(extensions), spc_version
             )
-            return public.ReturnMsg(True, "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli " + spc_version + ")")
+            # Pakai antrian task bawaan aaPanel (panelTask.bt_task), BUKAN nohup manual -
+            # dieksekusi oleh daemon BT-Task yang berjalan terpisah dari proses request HTTP
+            # ini, jadi proses build (bisa 15-40+ menit) benar-benar lepas dari koneksi
+            # browser/panel - tidak akan ikut mati kalau koneksi terputus atau proses
+            # penangan request ini di-recycle. Progress juga otomatis muncul di menu Task
+            # (message box) aaPanel sendiri, di luar polling GetInstallLog milik plugin ini.
+            panelTask.bt_task().create_task(
+                "Install FrankenPHP (build custom PHP %s)" % custom_version, '0', shell_cmd
+            )
+            return public.ReturnMsg(True, "Build custom dimulai di background (bisa 15-40+ menit, static-php-cli " + spc_version + ") - aman ditinggal, progress juga muncul di menu Task aaPanel")
 
         if php_version not in self.__php_version_tags:
             return public.ReturnMsg(False, "Pilihan versi PHP tidak dikenal: " + php_version)
@@ -727,8 +736,9 @@ class frankenphp_main:
             return public.ReturnMsg(False, "Tag rilis internal tidak valid")  # pengaman, seharusnya tidak pernah kena
 
         public.ExecShell("echo '' > %s" % self.__install_log)
-        public.ExecShell("nohup bash %s/install.sh install %s >> %s 2>&1 &" % (self.__plugin_dir, release_tag, self.__install_log))
-        return public.ReturnMsg(True, "Instalasi dimulai di background")
+        shell_cmd = "bash %s/install.sh install %s" % (self.__plugin_dir, release_tag)
+        panelTask.bt_task().create_task("Install FrankenPHP", '0', shell_cmd)
+        return public.ReturnMsg(True, "Instalasi dimulai di background - aman ditinggal, progress juga muncul di menu Task aaPanel")
 
     def GetInstallLog(self, get):
         if not os.path.exists(self.__install_log):
