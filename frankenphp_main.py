@@ -52,6 +52,9 @@ class frankenphp_main:
             "unknown_php_version_choice": "Unknown PHP version choice: {version}",
             "internal_release_tag_invalid": "Internal release tag is invalid",
             "install_started": "Installation started in the background - safe to leave, progress also appears in aaPanel's Task menu",
+            "rebuild_started": "Rebuild started in the background (can take 15-40+ minutes, static-php-cli {spc_version}). The current binary keeps serving until the new one is built and verified; site and systemd configuration are left untouched",
+            "not_installed": "FrankenPHP is not installed yet - use Install first",
+            "read_installed_ext_failed": "Could not read the extension list from the installed binary",
             "uninstalled": "FrankenPHP has been removed",
             "port_invalid": "Invalid port",
             "port_range": "Port must be between 1-65535",
@@ -152,6 +155,9 @@ class frankenphp_main:
             "unknown_php_version_choice": "Pilihan versi PHP tidak dikenal: {version}",
             "internal_release_tag_invalid": "Tag rilis internal tidak valid",
             "install_started": "Instalasi dimulai di background - aman ditinggal, progress juga muncul di menu Task aaPanel",
+            "rebuild_started": "Rebuild dimulai di background (bisa 15-40+ menit, static-php-cli {spc_version}). Binary yang sekarang tetap melayani sampai binary baru selesai dibangun dan lolos verifikasi; konfigurasi situs & systemd tidak disentuh",
+            "not_installed": "FrankenPHP belum terinstall - pakai menu Install dulu",
+            "read_installed_ext_failed": "Gagal membaca daftar extension dari binary yang terpasang",
             "uninstalled": "FrankenPHP telah dihapus",
             "port_invalid": "Port tidak valid",
             "port_range": "Port harus di antara 1-65535",
@@ -1008,10 +1014,18 @@ class frankenphp_main:
         "xsl", "xz", "yac", "yaml", "zip", "zlib", "zstd",
     )
     # Preset yang cukup buat kebanyakan app Laravel/umum - dicentang default di UI, sisanya
-    # (114 - 34 = 81 extension lain) tetap bisa dicentang manual kalau perlu.
+    # (114 - 35 = 79 extension lain) tetap bisa dicentang manual kalau perlu.
+    #
+    # mbregex WAJIB ikut, jangan dihapus walau terlihat seperti duplikat mbstring.
+    # Keduanya extension terpisah di static-php-cli: mbstring saja TIDAK membawa
+    # oniguruma, sehingga mb_split()/mb_ereg()/mb_ereg_replace() tidak ada. Laravel
+    # memakai mb_split() di Illuminate\Support\Str::studly() - fungsi yang dipanggil
+    # saat boot, jadi tanpa mbregex SETIAP perintah artisan dan setiap request mati
+    # dengan "Call to undefined function Illuminate\Support\mb_split()".
+    # Ketahuan saat deploy Laravel 12 ke build hasil preset lama (13 Agustus 2026).
     __spc_extensions_recommended = (
         "bcmath", "ctype", "curl", "dom", "fileinfo", "filter", "gd", "gmp", "iconv", "intl",
-        "mbstring", "mysqli", "mysqlnd", "opcache", "openssl", "pcntl", "pdo", "pdo_mysql",
+        "mbregex", "mbstring", "mysqli", "mysqlnd", "opcache", "openssl", "pcntl", "pdo", "pdo_mysql",
         "pdo_pgsql", "pdo_sqlite", "pgsql", "phar", "posix", "redis", "session", "simplexml",
         "sockets", "sodium", "sqlite3", "tokenizer", "xml", "xmlreader", "xmlwriter", "zip",
         "zlib",
@@ -1200,6 +1214,93 @@ class frankenphp_main:
         shell_cmd = "bash %s/install.sh install %s" % (self.__plugin_dir, release_tag)
         self._add_soft_install_task("Install FrankenPHP", shell_cmd)
         return public.ReturnMsg(True, self._t("install_started"))
+
+    def GetInstalledExtensions(self, get):
+        """Extension yang benar-benar ada di binary terpasang.
+
+        Dipakai UI Rebuild untuk mencentang kondisi saat ini, supaya rebuild
+        bersifat menambah/mengurangi dari yang berjalan - bukan mulai dari
+        preset kosong yang diam-diam menghilangkan extension.
+
+        Nama modul PHP != nama extension static-php-cli untuk sebagian kasus,
+        jadi hasilnya dipetakan balik dan disaring ke daftar yang dikenal spc.
+        """
+        if not self._is_installed():
+            return public.ReturnMsg(False, self._t("not_installed"))
+
+        shell = public.ExecShell(
+            "%s php-cli -r 'echo implode(\",\", get_loaded_extensions());' 2>/dev/null" % self.__bin
+        )
+        raw = (shell[0] if shell and shell[0] else "").strip()
+        loaded = set(e.strip() for e in raw.split(",") if e.strip())
+        if not loaded:
+            return public.ReturnMsg(False, self._t("read_installed_ext_failed"))
+
+        spc_cfg = self._get_spc_config()
+        known = set(spc_cfg["extensions"])
+
+        # padanan yang namanya berbeda antara modul PHP dan extension spc
+        aliases = {"Zend OPcache": "opcache"}
+        detected = set()
+        for mod in loaded:
+            name = aliases.get(mod, mod.lower())
+            if name in known:
+                detected.add(name)
+
+        # mbregex tidak muncul sebagai modul tersendiri - ia bagian mbstring yang
+        # hanya ada kalau dibangun dengan oniguruma, jadi dideteksi lewat fungsinya.
+        probe = public.ExecShell(
+            "%s php-cli -r 'exit(function_exists(\"mb_split\") ? 0 : 1);' >/dev/null 2>&1; echo $?" % self.__bin
+        )
+        if (probe[0] if probe and probe[0] else "1").strip() == "0" and "mbregex" in known:
+            detected.add("mbregex")
+
+        return public.ReturnMsg(True, ",".join(sorted(detected)))
+
+    def Rebuild(self, get):
+        """Build ulang binary dengan daftar extension baru, instalasi tetap utuh.
+
+        Install() sengaja menolak jalan kalau binary sudah ada, dan satu-satunya
+        jalur lain (Uninstall lalu Install) ikut menghapus Caddyfile beserta
+        seluruh konfigurasi situs. Rebuild mengisi celah itu: hanya binary yang
+        ditukar, dan hanya setelah binary baru terbukti jalan serta memuat semua
+        extension yang diminta (lihat verifikasi di install.sh).
+        """
+        if not self._is_installed():
+            return public.ReturnMsg(False, self._t("not_installed"))
+
+        custom_version = get.custom_php_version.strip() if ('custom_php_version' in get and get.custom_php_version.strip()) else ""
+        if not self.__custom_php_version_re.match(custom_version):
+            return public.ReturnMsg(False, self._t("php_version_invalid"))
+
+        spc_cfg = self._get_spc_config()
+        spc_version = spc_cfg["spc_version"]
+
+        ext_raw = get.extensions if 'extensions' in get else ""
+        extensions = sorted(set(e.strip() for e in ext_raw.split(",") if e.strip()))
+        if not extensions:
+            return public.ReturnMsg(False, self._t("pick_min_1_ext"))
+        unknown = [e for e in extensions if e not in spc_cfg["extensions"]]
+        if unknown:
+            return public.ReturnMsg(False, self._t("unknown_extensions", list=", ".join(unknown)))
+
+        # aturan bentrok yang sama dengan Install() - static-php-cli menolak build
+        # kalau swoole-hook-X dan pdo_X yang disediakannya sama-sama aktif.
+        ext_set = set(extensions)
+        for hook, pdo_ext in (
+            ("swoole-hook-pgsql", "pdo_pgsql"),
+            ("swoole-hook-sqlite", "pdo_sqlite"),
+            ("swoole-hook-odbc", "pdo_odbc"),
+        ):
+            if hook in ext_set and pdo_ext in ext_set:
+                return public.ReturnMsg(False, self._t("conflicting_extensions", hook=hook, pdo=pdo_ext))
+
+        public.ExecShell("echo '' > %s" % self.__install_log)
+        shell_cmd = "bash %s/install.sh rebuild %s %s %s" % (
+            self.__plugin_dir, custom_version, ",".join(extensions), spc_version
+        )
+        self._add_soft_install_task("Rebuild FrankenPHP (PHP %s)" % custom_version, shell_cmd)
+        return public.ReturnMsg(True, self._t("rebuild_started", spc_version=spc_version))
 
     def GetInstallLog(self, get):
         if not os.path.exists(self.__install_log):

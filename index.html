@@ -391,6 +391,7 @@
 			email_placeholder: "Let's Encrypt notifications", add_btn: 'Add',
 			not_responding: 'not responding', adding_domain: 'Adding domain...',
 			confirm_delete_domain: 'Delete domain "{domain}" from FrankenPHP? (files in the document root will NOT be deleted)',
+			rebuild_title: 'Rebuild binary', rebuild_btn: 'Rebuild', rebuild_hint: 'Rebuild the FrankenPHP binary with a different extension set or PHP version. The installation stays in place: site and systemd configuration are untouched, the running binary keeps serving until the new one is built and verified, and the old binary is backed up before the swap.', rebuild_ext_note: 'Ticked below = the {n} extensions in the binary running right now. Add or remove, then rebuild.', read_installed_ext_failed_ui: 'Could not read the current extension list - tick what you need manually.', confirm_rebuild: 'Rebuild with PHP {v} and {n} extensions? Takes 15-40+ minutes. The current binary keeps serving until the new one passes verification.',
 			danger_zone_title: 'Danger Zone', uninstall_plugin_btn: 'Uninstall FrankenPHP',
 			uninstall_plugin_hint: 'Completely removes the FrankenPHP service, binary, and configuration (all registered domains, WAF settings, etc.) from this server. Project files themselves are NOT deleted.',
 			confirm_uninstall_warning: 'Uninstall FrankenPHP completely? This removes the service, binary, and ALL domain configuration (WAF, load balancer, worker mode, etc.) from this server - CANNOT be undone. Project files in the document root are NOT deleted.',
@@ -585,6 +586,7 @@
 			email_placeholder: "notifikasi Let's Encrypt", add_btn: 'Tambah',
 			not_responding: 'tidak merespons', adding_domain: 'Menambahkan domain...',
 			confirm_delete_domain: 'Hapus domain "{domain}" dari FrankenPHP? (file di document root TIDAK akan dihapus)',
+			rebuild_title: 'Rebuild binary', rebuild_btn: 'Rebuild', rebuild_hint: 'Bangun ulang binary FrankenPHP dengan daftar extension atau versi PHP yang berbeda. Instalasi tidak dibongkar: konfigurasi situs & systemd tidak disentuh, binary yang berjalan tetap melayani sampai binary baru selesai dibangun dan lolos verifikasi, dan binary lama dicadangkan sebelum ditukar.', rebuild_ext_note: 'Yang tercentang = {n} extension yang ADA di binary yang berjalan sekarang. Tambah atau kurangi, lalu rebuild.', read_installed_ext_failed_ui: 'Gagal membaca daftar extension yang terpasang - centang manual sesuai kebutuhan.', confirm_rebuild: 'Rebuild dengan PHP {v} dan {n} extension? Butuh 15-40+ menit. Binary sekarang tetap melayani sampai binary baru lolos verifikasi.',
 			danger_zone_title: 'Danger Zone', uninstall_plugin_btn: 'Uninstall FrankenPHP',
 			uninstall_plugin_hint: 'Menghapus total service FrankenPHP, binary, dan konfigurasi (semua domain terdaftar, pengaturan WAF, dll) dari server ini. File project sendiri TIDAK ikut dihapus.',
 			confirm_uninstall_warning: 'Uninstall FrankenPHP sepenuhnya? Ini menghapus service, binary, dan SEMUA konfigurasi domain (WAF, load balancer, worker mode, dll) dari server ini - TIDAK BISA dibatalkan. File project di document root tidak ikut terhapus.',
@@ -1658,6 +1660,18 @@
 			'<div class="fp-box" id="fp_php_config_box" style="margin-bottom:16px;"><div class="fp-hint" style="padding:8px 0;">' + fpT('loading') + '</div></div>' +
 			'<div class="fp-section-title">PHP CLI FrankenPHP</div>' +
 			'<div class="fp-box" id="fp_php_cli_box" style="margin-bottom:16px;"><div class="fp-hint" style="padding:8px 0;">' + fpT('loading') + '</div></div>' +
+			'<div class="fp-section-title">' + fpT('rebuild_title') + '</div>' +
+			'<div class="fp-box" id="fp_rebuild_box" style="margin-bottom:16px;">' +
+			'<div class="fp-hint" style="margin-bottom:10px;">' + fpT('rebuild_hint') + '</div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('php_version') + '</div><div class="fp-form-field">' +
+			'<input class="fp-input" id="fp_rebuild_php_version" type="text" placeholder="8.2" style="max-width:160px;"></div></div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">Extensions</div><div class="fp-form-field">' +
+			'<div class="fp-hint" style="margin-bottom:6px;" id="fp_rebuild_ext_note">' + fpT('loading') + '</div>' +
+			'<div id="fp_rebuild_ext_checks" class="fp-ext-grid"></div></div></div>' +
+			'<div id="fp_rebuild_status" class="fp-hint" style="display:none;margin-top:10px;"></div>' +
+			'<div style="text-align:right;margin-top:12px;">' +
+			'<button type="button" class="btn btn-primary btn-sm" id="fp_rebuild_btn">' + fpT('rebuild_btn') + '</button></div>' +
+			'</div>' +
 			'<div class="fp-section-title">' + fpT('danger_zone_title') + '</div>' +
 			'<div class="fp-box" style="border:1px solid #f5c2c7;">' +
 			'<div class="fp-hint" style="margin-bottom:10px;">' + fpT('uninstall_plugin_hint') + '</div>' +
@@ -1666,7 +1680,62 @@
 		$('#fp_panel_settings').html(html);
 		fpLoadPhpConfig();
 		fpLoadPhpCliWrapper();
+		fpLoadRebuildPanel();
 		$('#fp_uninstall_btn').click(fpUninstallPlugin);
+		$('#fp_rebuild_btn').click(fpStartRebuild);
+	}
+
+	// Rebuild = tukar binary saja, instalasi & konfigurasi situs tetap utuh.
+	// Kotak centang diisi dari extension yang BENAR-BENAR ada di binary terpasang
+	// (bukan preset), supaya rebuild bersifat menambah/mengurangi dari kondisi
+	// berjalan dan tidak diam-diam menghilangkan extension yang sedang dipakai.
+	function fpLoadRebuildPanel() {
+		fpAjaxGet('GetSpcExtensionOptions', function (r) {
+			if (!r.status) { $('#fp_rebuild_ext_note').text(fpT('fetch_ext_failed_prefix') + r.msg); return; }
+			fpAjaxGet('GetInstalledExtensions', function (cur) {
+				var active = (cur.status && cur.msg) ? cur.msg.split(',') : [];
+				$('#fp_rebuild_ext_note').text(
+					cur.status ? fpT('rebuild_ext_note').replace('{n}', active.length)
+						: fpT('read_installed_ext_failed_ui')
+				);
+				$('#fp_rebuild_ext_checks').html((r.extensions || []).map(function (e) {
+					return '<label><input type="checkbox" value="' + fpEsc(e) + '"' +
+						(active.indexOf(e) !== -1 ? ' checked' : '') + '> ' + fpEsc(e) + '</label>';
+				}).join(''));
+			});
+		});
+	}
+
+	function fpStartRebuild() {
+		var v = $('#fp_rebuild_php_version').val().trim();
+		var exts = $('#fp_rebuild_ext_checks input:checked').map(function () { return this.value; }).get();
+		if (!v) { layer.msg(fpT('fill_php_version_first'), { icon: 2 }); return; }
+		if (!exts.length) { layer.msg(fpT('pick_min_1_ext'), { icon: 2 }); return; }
+		// aturan bentrok yang sama dengan Install - dicek di sini juga supaya user
+		// tidak menunggu build 15-40 menit hanya untuk gagal di akhir.
+		var pairs = [['swoole-hook-pgsql', 'pdo_pgsql'], ['swoole-hook-sqlite', 'pdo_sqlite'], ['swoole-hook-odbc', 'pdo_odbc']];
+		for (var i = 0; i < pairs.length; i++) {
+			if (exts.indexOf(pairs[i][0]) !== -1 && exts.indexOf(pairs[i][1]) !== -1) {
+				layer.msg(fpT('ext_conflict').replace('{hook}', pairs[i][0]).replace('{pdo}', pairs[i][1]), { icon: 2 });
+				return;
+			}
+		}
+		layer.confirm(fpT('confirm_rebuild').replace('{v}', v).replace('{n}', exts.length),
+			{ icon: 3, title: fpT('confirmation_title'), btn: [fpT('rebuild_btn'), fpT('cancel')] }, function (idx) {
+			layer.close(idx);
+			$('#fp_rebuild_btn').prop('disabled', true).text(fpT('installing_btn'));
+			$('#fp_rebuild_status').show().text(fpT('starting_custom_build').replace('{v}', v).replace('{n}', exts.length));
+			fpAjaxPost('Rebuild', { custom_php_version: v, extensions: exts.join(',') }, function (r) {
+				if (!r.status) {
+					layer.msg(r.msg, { icon: 2 });
+					$('#fp_rebuild_btn').prop('disabled', false).text(fpT('rebuild_btn'));
+					$('#fp_rebuild_status').hide();
+					return;
+				}
+				layer.msg(r.msg, { icon: 1 });
+				if (typeof messagebox === 'function') messagebox();
+			});
+		});
 	}
 
 	function fpUninstallPlugin() {

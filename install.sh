@@ -76,6 +76,10 @@ Build_frankenphp_source(){
     php_version="$1"
     extensions="$2"
     spc_version="${3:-2.8.5}"
+    # install  = pasang baru; jalankan Common_setup (systemd unit, Caddyfile, dst).
+    # rebuild  = binary sudah ada dan situs sudah jalan; TUKAR binary saja, jangan
+    #            sentuh Caddyfile/systemd supaya konfigurasi situs tidak hilang.
+    mode="${4:-install}"
     build_dir="$install_dir/build-src"
 
     if [ -z "$php_version" ] || [ -z "$extensions" ]; then
@@ -190,8 +194,47 @@ Build_frankenphp_source(){
         exit 1
     fi
 
+    new_bin="$build_dir/buildroot/bin/frankenphp"
+
+    # Verifikasi binary BARU sebelum menyentuh yang lama. Build bisa "sukses" tapi
+    # menghasilkan binary yang tidak jalan, atau - kejadian nyata 13 Agustus 2026 -
+    # jalan tapi kehilangan extension yang diminta (mbstring ikut, mbregex tidak,
+    # sehingga mb_split() hilang dan Laravel mati saat boot). Dicek di sini supaya
+    # ketahuan SEBELUM jadi masalah produksi, bukan sesudah.
+    if ! "$new_bin" version >/dev/null 2>&1; then
+        log "Binary hasil build tidak bisa dijalankan. Instalasi dibatalkan, binary lama tidak disentuh."
+        exit 1
+    fi
+
+    missing=""
+    for want in $(echo "$extensions" | tr ',' ' '); do
+        # nama spc != nama module PHP untuk sebagian extension; yang tidak bisa
+        # dipetakan otomatis dilewati saja daripada memunculkan alarm palsu.
+        case "$want" in
+            mbregex)    probe='function_exists("mb_split")' ;;
+            opcache)    probe='extension_loaded("Zend OPcache")' ;;
+            password-argon2|micro|swoole-hook-*) continue ;;
+            *)          probe="extension_loaded(\"$want\")" ;;
+        esac
+        if ! "$new_bin" php-cli -r "exit($probe ? 0 : 1);" >/dev/null 2>&1; then
+            missing="$missing $want"
+        fi
+    done
+    if [ -n "$missing" ]; then
+        log "Binary hasil build TIDAK memuat extension yang diminta:$missing"
+        log "Instalasi dibatalkan supaya binary lama yang masih berfungsi tidak tertimpa."
+        exit 1
+    fi
+
     mkdir -p "$install_dir/bin"
-    cp "$build_dir/buildroot/bin/frankenphp" "$install_dir/bin/frankenphp"
+
+    if [ "$mode" == "rebuild" ] && [ -s "$install_dir/bin/frankenphp" ]; then
+        backup_bin="$install_dir/bin/frankenphp.bak-$(date +%Y%m%d-%H%M%S)"
+        cp -a "$install_dir/bin/frankenphp" "$backup_bin"
+        log "Binary lama dicadangkan ke $backup_bin"
+    fi
+
+    cp "$new_bin" "$install_dir/bin/frankenphp"
     chmod +x "$install_dir/bin/frankenphp"
 
     ver=$("$install_dir/bin/frankenphp" version 2>/dev/null | head -1)
@@ -200,6 +243,21 @@ Build_frankenphp_source(){
     log "Membersihkan direktori build sementara ($build_dir, bisa beberapa GB)..."
     cd "$install_dir" || cd /
     rm -rf "$build_dir"
+
+    if [ "$mode" == "rebuild" ]; then
+        # Sengaja TIDAK memanggil Common_setup: unit systemd, Caddyfile, dan seluruh
+        # konfigurasi situs sudah ada dan harus dipertahankan apa adanya. Rebuild
+        # hanya menukar binary.
+        log "Mode rebuild - konfigurasi situs & systemd tidak disentuh. Me-restart layanan..."
+        if systemctl is-active frankenphp >/dev/null 2>&1; then
+            systemctl restart frankenphp && log "Layanan frankenphp berhasil di-restart." \
+                || log "PERINGATAN: restart frankenphp gagal - cek 'systemctl status frankenphp'. Binary lama ada di $backup_bin kalau perlu dikembalikan."
+        else
+            log "Layanan frankenphp sedang tidak aktif - binary sudah ditukar, jalankan sendiri saat siap."
+        fi
+        log "=== Rebuild selesai ==="
+        return 0
+    fi
 
     Common_setup
 }
@@ -412,10 +470,33 @@ if [ "$action" == "install" ]; then
     : > "$install_log"
     : > "$panel_exec_log"
     if [ "$arg2" == "custom" ]; then
-        Build_frankenphp_source "$3" "$4" "$5"
+        Build_frankenphp_source "$3" "$4" "$5" install
     else
         Install_frankenphp "$arg2"
     fi
+elif [ "$action" == "rebuild" ]; then
+    # Rebuild = build ulang binary dengan daftar extension baru TANPA menghapus
+    # instalasi. Dibutuhkan karena Install() di plugin menolak jalan kalau binary
+    # sudah ada, sementara satu-satunya jalur lain (Uninstall lalu Install) ikut
+    # menghapus Caddyfile beserta seluruh konfigurasi situs.
+    #
+    # Memakai lock yang SAMA dengan install: keduanya memakai $install_dir/build-src
+    # dan diawali `rm -rf`, jadi dua proses bersamaan akan saling menghancurkan
+    # direktori build satu sama lain.
+    exec 200>/tmp/frankenphp_build.lock
+    if ! flock -n 200; then
+        log "Rebuild gagal dimulai - ada proses install/build FrankenPHP LAIN yang sedang berjalan di server ini - tunggu sampai selesai."
+        exit 1
+    fi
+
+    if [ ! -s "$install_dir/bin/frankenphp" ]; then
+        log "Tidak ada instalasi FrankenPHP untuk di-rebuild. Pakai menu Install dulu."
+        exit 1
+    fi
+
+    : > "$install_log"
+    : > "$panel_exec_log"
+    Build_frankenphp_source "$arg2" "$3" "$4" rebuild
 else
     Uninstall_frankenphp
 fi
