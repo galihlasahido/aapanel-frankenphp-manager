@@ -234,7 +234,22 @@ Build_frankenphp_source(){
         log "Binary lama dicadangkan ke $backup_bin"
     fi
 
-    cp "$new_bin" "$install_dir/bin/frankenphp"
+    # WAJIB mv, JANGAN cp. Linux menolak menulis ke file yang sedang dieksekusi
+    # (ETXTBSY: "Text file busy"), jadi `cp` GAGAL setiap kali FrankenPHP sedang
+    # berjalan - persis kasus rebuild. Sebelumnya exit code cp tidak dicek, versi
+    # dibaca dari file lama, dan skrip melaporkan "Instalasi selesai. SUCCESS"
+    # padahal binary hasil build 28 menit langsung ikut terhapus bersama build-src.
+    # rename() cuma mengganti entri direktori: berhasil walau inode lama masih
+    # dipakai proses yang berjalan (proses itu tetap memakai binary lama sampai
+    # di-restart, yang memang dilakukan di bawah).
+    # mv dipakai, bukan cp, karena build-src ada di filesystem yang sama dengan
+    # install_dir sehingga rename() berlaku; kalau suatu saat berbeda, mv otomatis
+    # jatuh ke salin+hapus dan akan gagal dengan pesan yang jelas - bukan diam.
+    if ! mv -f "$new_bin" "$install_dir/bin/frankenphp"; then
+        log "GAGAL memasang binary hasil build ke $install_dir/bin/frankenphp."
+        log "Binary lama tidak berubah dan layanan tidak terganggu."
+        exit 1
+    fi
     chmod +x "$install_dir/bin/frankenphp"
 
     ver=$("$install_dir/bin/frankenphp" version 2>/dev/null | head -1)
