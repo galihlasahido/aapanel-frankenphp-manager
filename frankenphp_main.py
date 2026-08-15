@@ -1922,23 +1922,53 @@ class frankenphp_main:
 
         # Basic Auth berlaku di semua mode (php / php+WAF / proxy) - gerbangnya di depan
         # apa pun yang melayani situs itu.
-        basic_auth_enabled = str(get.basic_auth_enabled).strip() == "1" if 'basic_auth_enabled' in get else False
+        #
+        # ATURAN POKOKNYA: field yang TIDAK DIKIRIM berarti "tidak diubah", bukan "matikan".
+        # _build_site_fields menyusun situs dari nol pada setiap penyimpanan, jadi tanpa
+        # aturan ini satu penyimpanan yang tidak membawa field Basic Auth - halaman panel
+        # yang dibuka sebelum fitur ini ada, pemanggilan API dari skrip, atau formulir yang
+        # gagal merender bagiannya - akan MENCABUT gerbang yang sedang melindungi situs,
+        # tanpa satu pun pesan. Sudah terjadi: pgadmin.advance.web.id kehilangan gerbangnya
+        # dan kembali terbuka hanya karena paranoia level-nya diubah (15 Agustus 2026).
+        prev = existing or {}
+        if 'basic_auth_enabled' in get:
+            basic_auth_enabled = str(get.basic_auth_enabled).strip() == "1"
+        else:
+            basic_auth_enabled = bool(prev.get("basic_auth_enabled"))
+
+        prev_users = prev.get("basic_auth_users", []) or []
         try:
-            basic_auth_users = self._parse_basic_auth_users(
-                get.basic_auth_users if 'basic_auth_users' in get else "",
-                (existing or {}).get("basic_auth_users", [])
-            )
-            basic_auth_paths = self._parse_basic_auth_paths(
-                get.basic_auth_paths if 'basic_auth_paths' in get else ""
-            )
+            if 'basic_auth_users' in get:
+                basic_auth_users = self._parse_basic_auth_users(get.basic_auth_users, prev_users)
+            else:
+                basic_auth_users = prev_users
+            if 'basic_auth_paths' in get:
+                basic_auth_paths = self._parse_basic_auth_paths(get.basic_auth_paths)
+            else:
+                basic_auth_paths = prev.get("basic_auth_paths", []) or []
         except ValueError as e:
             return None, str(e)
+
+        # Daftar kosong pada situs yang SUDAH punya kredensial dibaca sebagai "tidak
+        # dikirim", bukan "hapus semuanya". Menghapus pemakai terakhir dinyatakan dengan
+        # mematikan gerbangnya, bukan dengan mengosongkan daftarnya - dan itu membuat
+        # penyimpanan yang tidak ada urusannya dengan Basic Auth tidak pernah bisa
+        # menggagalkan diri sendiri dengan "belum ada pemakainya".
+        if basic_auth_enabled and not basic_auth_users and prev_users:
+            basic_auth_users = prev_users
+
         if basic_auth_enabled and not basic_auth_users:
             return None, self._t("basic_auth_needs_user")
+
+        if 'basic_auth_realm' in get:
+            basic_auth_realm = get.basic_auth_realm.strip()
+        else:
+            basic_auth_realm = prev.get("basic_auth_realm", "") or ""
+
         site["basic_auth_enabled"] = basic_auth_enabled
         site["basic_auth_users"] = basic_auth_users
         site["basic_auth_paths"] = basic_auth_paths
-        site["basic_auth_realm"] = (get.basic_auth_realm.strip() if ('basic_auth_realm' in get and get.basic_auth_realm.strip()) else "")
+        site["basic_auth_realm"] = basic_auth_realm
 
         if mode in ("waf_php", "waf_proxy"):
             engine = get.waf_engine.strip() if ('waf_engine' in get and get.waf_engine.strip()) else "on"
