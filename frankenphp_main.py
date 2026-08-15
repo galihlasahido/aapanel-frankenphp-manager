@@ -7,6 +7,133 @@ sys.path.append("class/")
 import public
 
 
+WRAPPER_PHP_CLI = r'''#!/bin/bash
+# Command `php` sistem -> PHP embedded FrankenPHP.
+#
+# KENAPA ADA TERJEMAHAN DI SINI: subcommand `frankenphp php-cli` hanya mengenal DUA
+# bentuk, `php-cli <script> [args]` dan `php-cli -r <kode>`. Flag PHP lain (-v, -m,
+# -i, -f, -d, -n, -a) tidak dikenalnya - dan yang keluar bukan "opsi tidak dikenal"
+# melainkan `Failed opening required '-version'`, seolah ada berkas hilang. Padahal
+# menamai diri `php` di /usr/bin adalah sebuah janji: composer, skrip pemasangan,
+# dan CI rutin memanggil `php -v` atau `php -m` sekadar untuk mengenali PHP yang
+# terpasang, lalu menyimpulkan PHP-nya rusak.
+export HOME=__DIR__/home
+export XDG_DATA_HOME=__DIR__/home/.local/share
+export XDG_CONFIG_HOME=__DIR__/home/.config
+export PHPRC=__DIR__
+
+FRANKENPHP=__BIN__
+BASE_INI=__DIR__/php.ini
+FP_TMPDIR=""
+
+php_run() {
+    if [ -n "$FP_TMPDIR" ]; then
+        "$FRANKENPHP" php-cli "$@"
+        status=$?
+        rm -rf "$FP_TMPDIR"
+        exit $status
+    fi
+    exec "$FRANKENPHP" php-cli "$@"
+}
+
+action=""
+no_ini=0
+ini_args=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -v|--version) action=version; shift ;;
+        -m|--modules) action=modules; shift ;;
+        -i|--info)    action=info;    shift ;;
+        --ini)        action=ini;     shift ;;
+        -h|--help)    action=help;    shift ;;
+        -a|--interactive)
+            echo "php: shell interaktif (-a) tidak tersedia di PHP embedded FrankenPHP." >&2
+            echo "     Pakai:  php -r '<kode>'" >&2
+            exit 1
+            ;;
+        -n|--no-php-ini) no_ini=1; shift ;;
+        -d|--define) ini_args+=("$2"); shift 2 ;;
+        -d*) ini_args+=("${1#-d}"); shift ;;
+        -f|--file) shift ;;
+        --) shift; break ;;
+        -r|--run) break ;;
+        -*)
+            echo "php: opsi $1 tidak didukung oleh PHP embedded FrankenPHP." >&2
+            echo "     Yang didukung: -v -m -i --ini -d -n -f -r, dan menjalankan berkas skrip." >&2
+            exit 1
+            ;;
+        *) break ;;
+    esac
+done
+
+# `-d`/`-n` diterjemahkan jadi php.ini sementara, karena FrankenPHP tidak menerima
+# keduanya sebagai flag. PHPRC diarahkan ke sana untuk satu proses ini saja.
+if [ ${#ini_args[@]} -gt 0 ] || [ "$no_ini" -eq 1 ]; then
+    FP_TMPDIR=$(mktemp -d)
+    if [ "$no_ini" -eq 0 ] && [ -f "$BASE_INI" ]; then
+        cat "$BASE_INI" > "$FP_TMPDIR/php.ini"
+    else
+        : > "$FP_TMPDIR/php.ini"
+    fi
+    for kv in "${ini_args[@]}"; do
+        printf '%s\n' "$kv" >> "$FP_TMPDIR/php.ini"
+    done
+    export PHPRC="$FP_TMPDIR"
+fi
+
+case "$action" in
+    version)
+        php_run -r 'printf("PHP %s (cli) (NTS)\nCopyright (c) The PHP Group\nZend Engine v%s, Copyright (c) Zend Technologies\n", PHP_VERSION, zend_version());'
+        ;;
+    modules)
+        php_run -r '$e = get_loaded_extensions(); sort($e); echo "[PHP Modules]\n", implode("\n", $e), "\n\n[Zend Modules]\n"; $z = get_loaded_extensions(true); sort($z); if ($z) { echo implode("\n", $z), "\n"; }'
+        ;;
+    info)
+        php_run -r 'phpinfo();'
+        ;;
+    ini)
+        php_run -r 'printf("Configuration File (php.ini) Path: %s\nLoaded Configuration File: %s\nScan for additional .ini files in: %s\nAdditional .ini files parsed: %s\n", PHP_CONFIG_FILE_PATH, php_ini_loaded_file() ?: "(none)", PHP_CONFIG_FILE_SCAN_DIR ?: "(none)", php_ini_scanned_files() ?: "(none)");'
+        ;;
+    help)
+        cat >&2 <<'USAGE'
+Penggunaan: php [opsi] <berkas> [argumen...]
+            php [opsi] -r <kode>
+            php [opsi] < berkas
+
+PHP di sini adalah PHP embedded FrankenPHP, dijalankan lewat `frankenphp php-cli`.
+Opsi yang didukung:
+  -v, --version     tampilkan versi PHP
+  -m, --modules     daftar extension yang termuat
+  -i, --info        keluaran phpinfo()
+      --ini         lokasi berkas php.ini yang dipakai
+  -d key=value      setel direktif ini (boleh berulang)
+  -n                jalankan tanpa php.ini
+  -f <berkas>       jalankan berkas skrip
+  -r <kode>         jalankan kode inline
+Opsi lain (mis. -a) tidak tersedia.
+USAGE
+        [ -n "$FP_TMPDIR" ] && rm -rf "$FP_TMPDIR"
+        exit 0
+        ;;
+esac
+
+# Tanpa argumen sama sekali, PHP asli membaca skrip dari stdin - bentuk yang dipakai
+# pemasang seperti `curl ... | php`. FrankenPHP tidak bisa, jadi stdin ditampung dulu.
+if [ $# -eq 0 ]; then
+    if [ -t 0 ]; then
+        echo "php: tidak ada skrip yang diberikan. Lihat 'php --help'." >&2
+        [ -n "$FP_TMPDIR" ] && rm -rf "$FP_TMPDIR"
+        exit 1
+    fi
+    [ -n "$FP_TMPDIR" ] || FP_TMPDIR=$(mktemp -d)
+    cat > "$FP_TMPDIR/stdin.php"
+    php_run "$FP_TMPDIR/stdin.php"
+fi
+
+php_run "$@"
+'''
+
 class frankenphp_main:
     __install_dir = "/www/server/frankenphp"
     __bin = __install_dir + "/bin/frankenphp"
@@ -2994,6 +3121,11 @@ class frankenphp_main:
                 installed = False
         return {"status": True, "installed": installed, "path": self.__php_cli_wrapper_link}
 
+    def _php_cli_wrapper_script_body(self):
+        """Isi skrip wrapper `php`. Dipisah dari SetupPhpCliWrapper supaya isinya bisa
+        dibaca sebagai skrip bash utuh, bukan sebagai potongan string yang disambung."""
+        return WRAPPER_PHP_CLI.replace("__DIR__", self.__install_dir).replace("__BIN__", self.__bin)
+
     def SetupPhpCliWrapper(self, get):
         """Arahkan command 'php' sistem (/usr/bin/php) ke PHP EMBEDDED FrankenPHP (extension jauh
         lebih lengkap drpd PHP CLI aapanel bawaan panel: ada pdo_pgsql, redis, intl, bcmath,
@@ -3004,22 +3136,16 @@ class frankenphp_main:
         if not self._is_installed():
             return public.ReturnMsg(False, self._t("not_installed"))
 
-        script = (
-            "#!/bin/bash\n"
-            "export HOME=%s/home\n"
-            "export XDG_DATA_HOME=%s/home/.local/share\n"
-            "export XDG_CONFIG_HOME=%s/home/.config\n"
-            "export PHPRC=%s\n"
-            "exec %s php-cli \"$@\"\n"
-        ) % (self.__install_dir, self.__install_dir, self.__install_dir, self.__install_dir, self.__bin)
+        script = self._php_cli_wrapper_script_body()
         public.WriteFile(self.__php_cli_wrapper_script, script)
         public.ExecShell("chmod +x '%s'" % self.__php_cli_wrapper_script)
         public.ExecShell("ln -sf '%s' '%s'" % (self.__php_cli_wrapper_script, self.__php_cli_wrapper_link))
 
-        # catatan: subcommand "php-cli" FrankenPHP dirancang utk MENJALANKAN SCRIPT (spt "artisan"),
-        # bukan replacement penuh binary php - flag standalone spt -v/-m tidak didukung. Makanya
-        # validasi pakai -r (jalankan kode inline), bukan -v.
-        shell = public.ExecShell("%s -r \"echo 'PHP ' . PHP_VERSION;\"" % self.__php_cli_wrapper_link)
+        # Divalidasi lewat `-v`, justru karena flag itulah yang dulu gagal: subcommand
+        # "php-cli" FrankenPHP hanya mengenal `<script>` dan `-r <kode>`, dan wrapper inilah
+        # yang menerjemahkan sisanya. Menguji dengan `-r` berarti menguji FrankenPHP, bukan
+        # terjemahannya - lulus sekalipun `php -v` tetap rusak di tangan pemakai.
+        shell = public.ExecShell("%s -v" % self.__php_cli_wrapper_link)
         out = (shell[0] or "").strip() if shell else ""
         if "PHP" not in out:
             return public.ReturnMsg(False, self._t("wrapper_created_but_failed", detail=(shell[1] or out)))
