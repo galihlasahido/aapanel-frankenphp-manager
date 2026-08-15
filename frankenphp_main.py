@@ -121,6 +121,9 @@ class frankenphp_main:
             "ip_force_https_unsafe": "Force HTTPS (HSTS) cannot be enabled for an IP address - it uses a self-signed certificate (not trusted by browsers by default), and HSTS combined with an untrusted cert can lock browsers out of this site for up to a year with no way to bypass it. Turn off Force HTTPS first.",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
             "backend_scheme_not_allowed": "Do not write the scheme in the backend address ({value}) - use host:port, and turn on \"Backend speaks HTTPS/TLS\" below if the backend listens with TLS.",
+            "geoip_download_failed": "Could not download the GeoIP database ({files}). Check the server's outbound internet access and try again.",
+            "geoip_import_empty": "The GeoIP file was downloaded but no ranges could be read from it - the file looks unusable.",
+            "geoip_refreshed": "GeoIP database loaded ({ranges} ranges). {resolved} already-recorded attacker IP(s) now resolve to a country.",
             "backend_sni_invalid": "Invalid TLS server name (must be a domain): {value}",
             "ip_cidr_invalid": "Invalid IP/CIDR format: {value}",
             "http_method_unsupported": "Unsupported HTTP method: {value}",
@@ -226,6 +229,9 @@ class frankenphp_main:
             "ip_force_https_unsafe": "Force HTTPS (HSTS) tidak bisa diaktifkan buat alamat IP - IP pakai sertifikat self-signed (default tidak dipercaya browser), dan HSTS dikombinasikan cert tidak terpercaya bisa mengunci browser dari situs ini sampai 1 tahun tanpa cara skip. Matikan Force HTTPS dulu.",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
             "backend_scheme_not_allowed": "Jangan tulis skema di alamat backend ({value}) - isi host:port saja, lalu nyalakan \"Backend bicara HTTPS/TLS\" di bawah kalau backend-nya mendengarkan dengan TLS.",
+            "geoip_download_failed": "Database GeoIP gagal diunduh ({files}). Periksa akses internet keluar dari server ini, lalu coba lagi.",
+            "geoip_import_empty": "Berkas GeoIP berhasil diunduh tapi tidak ada satu pun range yang bisa dibaca - berkasnya tampak tidak terpakai.",
+            "geoip_refreshed": "Database GeoIP terpasang ({ranges} range). {resolved} IP penyerang yang sudah tercatat kini ketahuan negaranya.",
             "backend_sni_invalid": "TLS server name tidak valid (harus berupa domain): {value}",
             "ip_cidr_invalid": "Format IP/CIDR tidak valid: {value}",
             "http_method_unsupported": "Method HTTP tidak didukung: {value}",
@@ -517,9 +523,12 @@ class frankenphp_main:
 
     # ---- statistik website (SQLite) ----
 
-    def _stats_db(self):
+    def _stats_db(self, import_geoip=True):
         """Buka koneksi ke SQLite stats DB, buat skema kalau belum ada. Retensi data tidak
-        dibatasi (sesuai keputusan pemilik server) - tidak ada auto-cleanup baris lama."""
+        dibatasi (sesuai keputusan pemilik server) - tidak ada auto-cleanup baris lama.
+
+        `import_geoip=False` dipakai RefreshGeoipDatabase, yang toh akan mengimpor ulang
+        dari nol - tanpa itu CSV-nya diimpor dua kali berturut-turut."""
         os.makedirs(os.path.dirname(self.__stats_db_file), exist_ok=True)
         conn = sqlite3.connect(self.__stats_db_file, timeout=10)
         conn.execute("PRAGMA journal_mode=WAL")
@@ -608,9 +617,92 @@ class frankenphp_main:
             CREATE INDEX IF NOT EXISTS idx_request_log_domain_ts ON request_log(domain, ts);
             CREATE INDEX IF NOT EXISTS idx_request_log_status ON request_log(domain, status, ts);
         """)
-        if conn.execute("SELECT COUNT(*) FROM geoip_ranges_v4").fetchone()[0] == 0:
+        if import_geoip and not self._geoip_loaded(conn):
             self._import_geoip_csv(conn)
+            # Impor yang akhirnya berhasil ikut memperbaiki event yang telanjur tersimpan
+            # tanpa negara, bukan hanya melayani event berikutnya.
+            if self._geoip_loaded(conn):
+                self._backfill_event_countries(conn)
         return conn
+
+    def _geoip_loaded(self, conn):
+        return conn.execute("SELECT COUNT(*) FROM geoip_ranges_v4").fetchone()[0] > 0
+
+    def _backfill_event_countries(self, conn):
+        """Isi kolom country pada waf_events yang masih NULL, memakai tabel GeoIP sekarang.
+
+        Wajib ada karena collector hanya menyentuh baris log BARU (posisinya disimpan di
+        log_offsets) - event yang telanjur tersimpan saat database GeoIP belum terpasang
+        tidak akan pernah dikunjunginya lagi. Tanpa backfill, memperbaiki GeoIP tidak
+        memperbaiki apa pun yang sudah terjadi: peta serangan tetap kosong sampai ada
+        serangan baru, dan periode yang sudah tercatat hilang diam-diam dari peta selamanya.
+        """
+        rows = conn.execute("SELECT DISTINCT client_ip FROM waf_events WHERE country IS NULL").fetchall()
+        resolved = 0
+        for (ip,) in rows:
+            country = self._geoip_country(conn, ip)
+            if not country:
+                continue
+            conn.execute("UPDATE waf_events SET country=? WHERE client_ip=? AND country IS NULL", (country, ip))
+            resolved += 1
+        if resolved:
+            conn.commit()
+        return resolved
+
+    def _download_geoip_csv(self):
+        """Ambil ulang CSV DB-IP (CC BY 4.0) yang normalnya diunduh install.sh.
+
+        Unduhannya bisa gagal saat instalasi (jaringan, GitHub sedang tidak bisa dijangkau)
+        dan kegagalan itu sengaja tidak menghentikan instalasi - tapi sampai sekarang juga
+        tidak ada jalan memperbaikinya dari panel, jadi peta serangan tinggal kosong
+        selamanya tanpa penjelasan.
+        """
+        os.makedirs(self.__geoip_dir, exist_ok=True)
+        sources = (
+            (self.__geoip_csv_v4, "dbip-country-ipv4.csv"),
+            (self.__geoip_csv_v6, "dbip-country-ipv6.csv"),
+        )
+        failed = []
+        for target, name in sources:
+            tmp = target + ".tmp"
+            public.ExecShell(
+                "curl -sL --fail --max-time 180 -o '%s' 'https://raw.githubusercontent.com/sapics/ip-location-db/main/dbip-country/%s'"
+                % (tmp, name)
+            )
+            # Berkas lama TIDAK ditimpa sebelum unduhan terbukti utuh; unduhan setengah jadi
+            # yang menggantikan database yang bekerja adalah kerusakan, bukan pembaruan.
+            if os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+                os.replace(tmp, target)
+            else:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                failed.append(name)
+        return failed
+
+    def RefreshGeoipDatabase(self, get):
+        """Unduh ulang + impor ulang database GeoIP, lalu perbaiki event yang sudah tercatat."""
+        if not self._is_installed():
+            return public.ReturnMsg(False, self._t("not_installed"))
+
+        failed = self._download_geoip_csv()
+        if not os.path.exists(self.__geoip_csv_v4):
+            return public.ReturnMsg(False, self._t("geoip_download_failed", files=", ".join(failed)))
+
+        conn = self._stats_db(import_geoip=False)
+        try:
+            conn.execute("DELETE FROM geoip_ranges_v4")
+            conn.execute("DELETE FROM geoip_ranges_v6")
+            conn.commit()
+            self._import_geoip_csv(conn)
+            ranges = conn.execute("SELECT COUNT(*) FROM geoip_ranges_v4").fetchone()[0]
+            ranges += conn.execute("SELECT COUNT(*) FROM geoip_ranges_v6").fetchone()[0]
+            resolved = self._backfill_event_countries(conn)
+        finally:
+            conn.close()
+
+        if not ranges:
+            return public.ReturnMsg(False, self._t("geoip_import_empty"))
+        return public.ReturnMsg(True, self._t("geoip_refreshed", ranges=ranges, resolved=resolved))
 
     def _import_geoip_csv(self, conn):
         """Import CSV DB-IP (IPv4/IPv6 -> negara) ke tabel geoip_ranges_v4/v6. Sekali jalan
@@ -2604,6 +2696,10 @@ class frankenphp_main:
                 "total_attacks": total + unknown_count,
                 "countries": countries,
                 "unknown_count": unknown_count,
+                # Tanpa ini frontend tidak bisa membedakan "tidak ada serangan" dari
+                # "ada serangan tapi database GeoIP-nya belum terpasang", dan dua keadaan
+                # itu terlihat sama persis: peta kosong.
+                "geoip_loaded": self._geoip_loaded(conn),
             }
         finally:
             conn.close()

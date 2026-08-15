@@ -299,6 +299,10 @@
 			no_waf_domain_yet: 'No domain with PHP+WAF or WAF+Load Balancer mode yet.',
 			no_domain_registered_open: 'No domain registered yet. Open the',
 			no_attacks_this_range: 'No attacks recorded in this range yet.',
+			geoip_missing: '{n} attack(s) recorded, but the GeoIP database is not installed, so none of them can be placed on the map.',
+			geoip_download_btn: 'Download GeoIP database',
+			geoip_downloading: 'Downloading...',
+			attacks_all_unknown_country: '{n} attack(s) recorded, but none of the source IPs are covered by the GeoIP database.',
 			no_attacks_recorded: 'No attacks recorded yet.',
 			no_attacks_filter_domain: 'No attacks recorded/matching the filter for this domain yet.',
 			next_raquo: 'Next &raquo;', clear_autoblock: 'Clear Auto-block',
@@ -501,6 +505,10 @@
 			no_waf_domain_yet: 'Belum ada domain dengan mode PHP+WAF atau WAF+Load Balancer.',
 			no_domain_registered_open: 'Belum ada domain terdaftar. Buka menu',
 			no_attacks_this_range: 'Belum ada serangan tercatat pada rentang ini.',
+			geoip_missing: '{n} serangan tercatat, tapi database GeoIP belum terpasang sehingga tidak satu pun bisa ditaruh di peta.',
+			geoip_download_btn: 'Unduh database GeoIP',
+			geoip_downloading: 'Mengunduh...',
+			attacks_all_unknown_country: '{n} serangan tercatat, tapi tidak satu pun IP asalnya tercakup database GeoIP.',
 			no_attacks_recorded: 'Belum ada serangan tercatat.',
 			no_attacks_filter_domain: 'Belum ada serangan tercatat/cocok dengan filter untuk domain ini.',
 			next_raquo: 'Berikutnya &raquo;', clear_autoblock: 'Bersihkan Auto-block',
@@ -1316,7 +1324,27 @@
 			var mapWrap = '<div class="fp-geo-map-wrap">' + svg + controls + '</div>';
 
 			if (!countries.length) {
-				$box.html(mapWrap + '<div class="fp-table-wrap" style="margin-top:12px;"><div class="fp-empty">' + fpT('no_attacks_this_range') + '</div></div>');
+				// Peta kosong punya TIGA sebab yang terlihat sama persis, dan menyebut
+				// ketiganya "belum ada serangan" adalah kebohongan pada dua di antaranya:
+				// serangannya ada, hanya asalnya yang tak diketahui - atau database
+				// GeoIP-nya memang belum terpasang sama sekali.
+				var note;
+				if (!r.geoip_loaded) {
+					note = '<div class="fp-empty">' + fpT('geoip_missing').replace('{n}', r.total_attacks || 0) +
+						' <button type="button" class="btn btn-default btn-sm" id="fp_geoip_refresh" style="margin-left:8px;">' + fpT('geoip_download_btn') + '</button></div>';
+				} else if (r.total_attacks) {
+					note = '<div class="fp-empty">' + fpT('attacks_all_unknown_country').replace('{n}', r.total_attacks) + '</div>';
+				} else {
+					note = '<div class="fp-empty">' + fpT('no_attacks_this_range') + '</div>';
+				}
+				$box.html(mapWrap + '<div class="fp-table-wrap" style="margin-top:12px;">' + note + '</div>');
+				$('#fp_geoip_refresh').click(function () {
+					var $b = $(this).prop('disabled', true).text(fpT('geoip_downloading'));
+					fpAjaxPost('RefreshGeoipDatabase', {}, function (res) {
+						layer.msg(fpEsc(res.msg), { icon: res.status ? 1 : 2, time: 6000 });
+						if (res.status) { fpLoadGeoMap(); } else { $b.prop('disabled', false).text(fpT('geoip_download_btn')); }
+					});
+				});
 				fpBindGeoPanZoom();
 				return;
 			}
