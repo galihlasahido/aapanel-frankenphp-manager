@@ -42,22 +42,25 @@ ini_args=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -v|--version) action=version; shift ;;
-        -m|--modules) action=modules; shift ;;
-        -i|--info)    action=info;    shift ;;
-        --ini)        action=ini;     shift ;;
-        -h|--help)    action=help;    shift ;;
-        -a|--interactive)
+        # PHP asli menerima opsi panjang berawalan SATU strip (`php -version`) selain dua
+        # strip, jadi keduanya dikenali di sini - bentuk satu strip itu yang paling sering
+        # diketik orang, dan dulu justru itu yang jatuh ke pesan berkas hilang.
+        -v|--version|-version) action=version; shift ;;
+        -m|--modules|-modules) action=modules; shift ;;
+        -i|--info|-info) action=info; shift ;;
+        --ini|-ini) action=ini; shift ;;
+        -h|--help|-help|-\?) action=help; shift ;;
+        -a|--interactive|-interactive)
             echo "php: shell interaktif (-a) tidak tersedia di PHP embedded FrankenPHP." >&2
             echo "     Pakai:  php -r '<kode>'" >&2
             exit 1
             ;;
-        -n|--no-php-ini) no_ini=1; shift ;;
-        -d|--define) ini_args+=("$2"); shift 2 ;;
+        -n|--no-php-ini|-no-php-ini) no_ini=1; shift ;;
+        -d|--define|-define) ini_args+=("$2"); shift 2 ;;
         -d*) ini_args+=("${1#-d}"); shift ;;
-        -f|--file) shift ;;
+        -f|--file|-file) shift ;;
         --) shift; break ;;
-        -r|--run) break ;;
+        -r|--run|-run) break ;;
         -*)
             echo "php: opsi $1 tidak didukung oleh PHP embedded FrankenPHP." >&2
             echo "     Yang didukung: -v -m -i --ini -d -n -f -r, dan menjalankan berkas skrip." >&2
