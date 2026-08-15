@@ -125,6 +125,8 @@ class frankenphp_main:
             "ip_force_https_unsafe": "Force HTTPS (HSTS) cannot be enabled for an IP address - it uses a self-signed certificate (not trusted by browsers by default), and HSTS combined with an untrusted cert can lock browsers out of this site for up to a year with no way to bypass it. Turn off Force HTTPS first.",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
             "backend_scheme_not_allowed": "Do not write the scheme in the backend address ({value}) - use host:port, and turn on \"Backend speaks HTTPS/TLS\" below if the backend listens with TLS.",
+            "bypass_path_must_start_slash": "WAF bypass path must start with / : {value}",
+            "bypass_path_invalid": "Invalid WAF bypass path (letters, numbers, . _ - / only, no query string): {value}",
             "geoip_download_failed": "Could not download the GeoIP database ({files}). Check the server's outbound internet access and try again.",
             "geoip_import_empty": "The GeoIP file was downloaded but no ranges could be read from it - the file looks unusable.",
             "geoip_refreshed": "GeoIP database loaded ({ranges} ranges). {resolved} already-recorded attacker IP(s) now resolve to a country.",
@@ -233,6 +235,8 @@ class frankenphp_main:
             "ip_force_https_unsafe": "Force HTTPS (HSTS) tidak bisa diaktifkan buat alamat IP - IP pakai sertifikat self-signed (default tidak dipercaya browser), dan HSTS dikombinasikan cert tidak terpercaya bisa mengunci browser dari situs ini sampai 1 tahun tanpa cara skip. Matikan Force HTTPS dulu.",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
             "backend_scheme_not_allowed": "Jangan tulis skema di alamat backend ({value}) - isi host:port saja, lalu nyalakan \"Backend bicara HTTPS/TLS\" di bawah kalau backend-nya mendengarkan dengan TLS.",
+            "bypass_path_must_start_slash": "Jalur pengecualian WAF harus diawali / : {value}",
+            "bypass_path_invalid": "Jalur pengecualian WAF tidak valid (hanya huruf, angka, . _ - / dan tanpa query string): {value}",
             "geoip_download_failed": "Database GeoIP gagal diunduh ({files}). Periksa akses internet keluar dari server ini, lalu coba lagi.",
             "geoip_import_empty": "Berkas GeoIP berhasil diunduh tapi tidak ada satu pun range yang bisa dibaca - berkasnya tampak tidak terpakai.",
             "geoip_refreshed": "Database GeoIP terpasang ({ranges} range). {resolved} IP penyerang yang sudah tercatat kini ketahuan negaranya.",
@@ -341,6 +345,25 @@ class frankenphp_main:
             if not self.__backend_re.match(b):
                 raise ValueError(self._t("backend_format_invalid", value=b))
         return backends
+
+    # Prefix path yang boleh dilewatkan dari pemeriksaan CRS. Sengaja sempit: hanya
+    # karakter path biasa, tanpa spasi, tanpa regex, tanpa query string.
+    __waf_bypass_path_re = re.compile(r'^/[A-Za-z0-9._\-/]{0,64}$')
+
+    def _parse_bypass_paths(self, text):
+        if not text:
+            return []
+        parts = re.split(r'[\s,]+', text.strip())
+        paths = []
+        for p in parts:
+            if not p:
+                continue
+            if not p.startswith('/'):
+                raise ValueError(self._t("bypass_path_must_start_slash", value=p))
+            if not self.__waf_bypass_path_re.match(p):
+                raise ValueError(self._t("bypass_path_invalid", value=p))
+            paths.append(p.rstrip('/') or '/')
+        return paths
 
     def _parse_ip_list(self, text):
         if not text:
@@ -833,7 +856,7 @@ class frankenphp_main:
         return script_path
 
     def _waf_block(self, engine, paranoia, threshold, custom_rules, whitelist, blacklist, allowed_methods=None,
-                    upload_filter_mode=None, upload_filter_list=None, domain=None):
+                    upload_filter_mode=None, upload_filter_list=None, domain=None, bypass_paths=None):
         # PENTING - urutan directive di bawah ini sudah diverifikasi empiris satu-satu ke
         # binary Coraza asli, JANGAN diubah tanpa test ulang pakai curl:
         # 1. id SecAction tuning HARUS bukan 900000 (dipakai internal crs-setup.conf.example,
@@ -859,6 +882,24 @@ class frankenphp_main:
         if whitelist:
             whitelist_rule = 'SecRule REMOTE_ADDR "@ipMatch %s" "id:900400,phase:1,pass,nolog,ctl:ruleEngine=Off"\n' % ",".join(whitelist)
 
+        # Jalur yang dilewatkan dari CRS. Alasannya bukan kemalasan menyetel rule: panel
+        # administrasi memang BERTUGAS mengirim SQL, perintah shell, path berkas, dan
+        # password - persis bentuk yang dicari CRS. Menaruhnya di belakang CRS berarti
+        # aliran false positive yang tak pernah habis (manajer PostgreSQL aaPanel kena
+        # 942340 "SQL auth bypass" dan 942431 "terlalu banyak karakter khusus" hanya karena
+        # password-nya kuat, 15 Agustus 2026), dan tiap kali begitu auto-block ikut mendekat.
+        # Yang dilewatkan HANYA prefix yang disebut; jalur lain tetap diperiksa penuh,
+        # sehingga pemindai yang mengetuk /.env atau /wp-login.php tetap tertahan.
+        bypass_rule = ""
+        if bypass_paths:
+            # Segmen `/apsess_<token>` di depan adalah sisipan sesi milik aaPanel sendiri -
+            # URL yang sama muncul dengan dan tanpa segmen itu, jadi keduanya harus cocok.
+            alternatives = "|".join(re.escape(p) for p in bypass_paths)
+            bypass_rule = (
+                'SecRule REQUEST_URI "@rx ^(?:/apsess_[A-Za-z0-9_-]+)?(?:%s)(?:/|\\?|$)" '
+                '"id:900450,phase:1,pass,nolog,ctl:ruleEngine=Off"\n'
+            ) % alternatives
+
         methods_rule = ""
         method_override_rules = ""
         if allowed_methods:
@@ -882,6 +923,7 @@ class frankenphp_main:
 
         directives = (
             whitelist_rule +
+            bypass_rule +
             "Include @coraza.conf-recommended\n"
             "Include @crs-setup.conf.example\n"
             "SecAction \"id:900500,phase:1,pass,nolog,"
@@ -1003,7 +1045,8 @@ class frankenphp_main:
                 s.get("waf_allowed_methods", []),
                 s.get("waf_upload_filter_mode", "blacklist"),
                 s.get("waf_upload_filter_list", []) if s.get("waf_upload_filter_enabled") else [],
-                s.get("domain")
+                s.get("domain"),
+                s.get("waf_bypass_paths", [])
             )
         if mode == "waf_proxy":
             backends = s.get("backends", [])
@@ -1611,6 +1654,10 @@ class frankenphp_main:
             except ValueError as e:
                 return None, str(e)
             try:
+                bypass_paths = self._parse_bypass_paths(get.waf_bypass_paths if 'waf_bypass_paths' in get else "")
+            except ValueError as e:
+                return None, str(e)
+            try:
                 blacklist_manual = self._parse_ip_list(get.waf_blacklist if 'waf_blacklist' in get else "")
             except ValueError as e:
                 return None, str(e)
@@ -1668,6 +1715,7 @@ class frankenphp_main:
             site["waf_threshold"] = threshold
             site["waf_custom_rules"] = custom_rules.strip() if custom_rules else ""
             site["waf_whitelist"] = whitelist
+            site["waf_bypass_paths"] = bypass_paths
             site["waf_blacklist"] = blacklist
             site["waf_blacklist_manual"] = blacklist_manual
             site["waf_blacklist_auto"] = cc_auto

@@ -378,6 +378,9 @@
 			waf_rule_id_label: 'Rule ID:',
 			waf_whitelist_placeholder: 'optional, one IP/CIDR per line, e.g. 203.0.113.5 or 10.0.0.0/8',
 			waf_whitelist_hint2: 'IPs on this list FULLY bypass the WAF (no rule is evaluated at all) &mdash; use for trusted office/monitoring IPs.',
+			bypass_paths_label: 'Paths exempt from CRS',
+			bypass_paths_placeholder: 'optional, one path prefix per line, e.g. /v2 or /admin/api',
+			bypass_paths_hint: 'Requests under these prefixes skip the OWASP rules entirely; every other path is still inspected. Use it for an admin area behind this WAF &mdash; a control panel legitimately sends SQL, shell commands, file paths and passwords, which is exactly what CRS is built to reject. An aaPanel session segment (/apsess_&hellip;) in front of the prefix is matched too.',
 			waf_blacklist_placeholder: 'optional, one IP/CIDR per line',
 			waf_blacklist_hint2: 'IPs on this list are always rejected (403). IPs from CC Defense auto-block are managed separately in the Security tab &mdash; won\'t be overwritten by this field.',
 			upload_filter_list_placeholder: 'one entry per line - extension (e.g. php, exe) or MIME type (e.g. image/jpeg)',
@@ -584,6 +587,9 @@
 			waf_rule_id_label: 'Rule ID:',
 			waf_whitelist_placeholder: 'opsional, satu IP/CIDR per baris, mis. 203.0.113.5 atau 10.0.0.0/8',
 			waf_whitelist_hint2: 'IP di daftar ini SEPENUHNYA melewati WAF (tidak dievaluasi rule apa pun) &mdash; pakai untuk IP kantor/monitoring tepercaya.',
+			bypass_paths_label: 'Jalur yang dikecualikan dari CRS',
+			bypass_paths_placeholder: 'opsional, satu prefix jalur per baris, mis. /v2 atau /admin/api',
+			bypass_paths_hint: 'Request di bawah prefix ini melewati rule OWASP sepenuhnya; jalur lain tetap diperiksa. Dipakai untuk area administrasi di belakang WAF ini &mdash; panel kendali memang wajar mengirim SQL, perintah shell, path berkas, dan password, yaitu persis yang dirancang ditolak CRS. Segmen sesi aaPanel (/apsess_&hellip;) di depan prefix ikut dicocokkan.',
 			waf_blacklist_placeholder: 'opsional, satu IP/CIDR per baris',
 			waf_blacklist_hint2: 'IP di daftar ini selalu ditolak (403). IP hasil auto-block CC Defense dikelola terpisah di tab Keamanan &mdash; tidak akan tertimpa oleh field ini.',
 			upload_filter_list_placeholder: 'satu entry per baris - ekstensi (mis. php, exe) atau MIME type (mis. image/jpeg)',
@@ -2178,6 +2184,7 @@
 		var wafAllowedMethodsVal = site && site.waf_allowed_methods ? site.waf_allowed_methods : [];
 		var httpMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'QUERY'];
 		var wafWhitelistVal = site && site.waf_whitelist ? site.waf_whitelist.join('\n') : '';
+		var bypassPathsVal = site && site.waf_bypass_paths ? site.waf_bypass_paths.join('\n') : '';
 		var wafBlacklistVal = site && site.waf_blacklist_manual ? site.waf_blacklist_manual.join('\n') : '';
 		var uploadFilterEnabledVal = site ? !!site.waf_upload_filter_enabled : false;
 		var uploadFilterModeVal = site ? (site.waf_upload_filter_mode || 'blacklist') : 'blacklist';
@@ -2223,6 +2230,8 @@
 			'<div class="fp-subsection-title">' + fpT('ip_whitelist_blacklist') + '</div>' +
 			'<div class="fp-subrow" style="align-items:flex-start;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('whitelist') + '</div><div class="fp-form-field"><textarea class="fp-textarea" id="fp_s_waf_whitelist" placeholder="' + fpT('waf_whitelist_placeholder') + '">' + fpEsc(wafWhitelistVal) + '</textarea>' +
 			'<div class="fp-hint" style="margin-top:4px;">' + fpT('waf_whitelist_hint2') + '</div></div></div>' +
+			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('bypass_paths_label') + '</div><div class="fp-form-field"><textarea class="fp-textarea" id="fp_s_waf_bypass_paths" placeholder="' + fpT('bypass_paths_placeholder') + '">' + fpEsc(bypassPathsVal) + '</textarea>' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('bypass_paths_hint') + '</div></div></div>' +
 			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('blacklist_manual') + '</div><div class="fp-form-field"><textarea class="fp-textarea" id="fp_s_waf_blacklist" placeholder="' + fpT('waf_blacklist_placeholder') + '">' + fpEsc(wafBlacklistVal) + '</textarea>' +
 			'<div class="fp-hint" style="margin-top:4px;">' + fpT('waf_blacklist_hint2') + '</div></div></div>' +
 			'</div>' +
@@ -2392,6 +2401,7 @@
 			data.waf_custom_rules = $('#fp_s_waf_custom').val();
 			data.waf_allowed_methods = $('#fp_s_waf_methods input:checked').map(function () { return this.value; }).get().join(',');
 			data.waf_whitelist = $('#fp_s_waf_whitelist').val();
+			data.waf_bypass_paths = $('#fp_s_waf_bypass_paths').val();
 			data.waf_blacklist = $('#fp_s_waf_blacklist').val();
 			data.waf_upload_filter_enabled = $('#fp_s_upload_filter_enabled').is(':checked') ? '1' : '0';
 			data.waf_upload_filter_mode = $('#fp_s_upload_filter_mode .fp-seg-opt.sel').data('val') || 'blacklist';
