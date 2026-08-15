@@ -1849,6 +1849,11 @@ class frankenphp_main:
     __waf_sev_re = re.compile(r'\[severity\s+"([^"]*)"\]')
     __waf_tag_re = re.compile(r'\[tag\s+"([^"]*)"\]')
     __waf_uid_re = re.compile(r'\[unique_id\s+"([^"]*)"\]')
+    # Isi [data "..."] Coraza: potongan yang BENAR-BENAR cocok, mis.
+    # `Matched Data: GET, found within ARGS:waf_allowed_methods: GET,POST,PUT,DELETE`.
+    # Ini satu-satunya keterangan yang bisa membedakan serangan sungguhan dari salah
+    # tangkap; nama rule saja ("Unix Command Injection") terdengar sama untuk keduanya.
+    __waf_data_re = re.compile(r'\[data\s+"((?:[^"\\]|\\.)*)"\]')
     __waf_score_re = re.compile(r'Total Score:\s*(\d+)')
 
     def _get_waf_events(self, domain=None, limit=20000):
@@ -1887,6 +1892,7 @@ class frankenphp_main:
             entry.setdefault("rules", []).append({
                 "id": id_m.group(1),
                 "msg": (self.__waf_msg_re.search(msg).group(1) if self.__waf_msg_re.search(msg) else ""),
+                "data": (self.__waf_data_re.search(msg).group(1) if self.__waf_data_re.search(msg) else ""),
                 "severity": (self.__waf_sev_re.search(msg).group(1) if self.__waf_sev_re.search(msg) else ""),
                 "tags": self.__waf_tag_re.findall(msg),
             })
@@ -1912,6 +1918,7 @@ class frankenphp_main:
                 "rule_count": len(rules),
                 "rule_id": top_rule["id"] if top_rule else "",
                 "message": top_rule["msg"] if top_rule else "Rule violation",
+                "matched_data": top_rule.get("data", "") if top_rule else "",
                 "severity": top_rule["severity"] if top_rule else "",
                 "category": category,
                 "unique_id": uid,

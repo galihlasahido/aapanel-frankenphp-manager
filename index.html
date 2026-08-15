@@ -1622,7 +1622,11 @@
 				'<td class="fp-mono" style="white-space:nowrap;">' + fpEsc(waktu) + '</td>' +
 				'<td class="fp-mono">' + fpEsc(e.client_ip) + '</td>' +
 				'<td><span class="fp-cat-badge">' + fpEsc(e.category) + '</span></td>' +
-				'<td>' + fpEsc(e.message) + (e.rule_count > 1 ? ' <span class="fp-hint">' + fpT('other_rules_suffix').replace('{n}', e.rule_count - 1) + '</span>' : '') + '</td>' +
+				'<td>' + fpEsc(e.message) + (e.rule_count > 1 ? ' <span class="fp-hint">' + fpT('other_rules_suffix').replace('{n}', e.rule_count - 1) + '</span>' : '') +
+					// Potongan yang cocok, bukan cuma nama rule-nya. "Unix Command Injection"
+					// berbunyi sama persis untuk serangan sungguhan dan untuk kolom formulir
+					// yang kebetulan berisi kata GET - hanya baris inilah yang membedakannya.
+					(e.matched_data ? '<div class="fp-hint fp-mono" style="margin-top:2px;word-break:break-all;">' + fpEsc(e.matched_data) + '</div>' : '') + '</td>' +
 				'<td class="fp-mono" style="max-width:260px;word-break:break-all;">' + fpEsc(e.uri) + '</td>' +
 				'<td>' + fpEsc(e.score) + '</td>' +
 				'<td class="fp-mono" style="white-space:nowrap;">' + fpEsc(e.unique_id) + '</td>' +
