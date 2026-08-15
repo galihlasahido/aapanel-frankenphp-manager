@@ -43,6 +43,8 @@ Add/edit/remove domains, each running in one of three modes:
 - **`PHP + WAF`** — Caddy + Coraza WAF → FrankenPHP
 - **`WAF + Load Balancer`** — Caddy + Coraza WAF → one or more backend servers, with health checks
 
+Backends are addressed as `host:port` and are reached over plain HTTP by default. If the backend itself listens with TLS, turn on **`Backend speaks HTTPS/TLS`** — a TLS listener answers a plain HTTP request with a redirect to `https://<Host>/`, and since that address is built from the forwarded `Host` header, the browser is sent back to your public domain and loops (`ERR_TOO_MANY_REDIRECTS`) with a clean 302 in every log. Local backends are usually self-signed, so **`Skip certificate verification`** is normally needed too; it applies only to the hop from Caddy to the backend, never to the certificate visitors see. The health-check button follows the same setting, so it probes the backend the way Caddy actually reaches it.
+
 The domain field also accepts a plain **IPv4 address** if you don't have a domain pointed at the server yet — HTTPS then uses a self-signed certificate (Caddy's internal CA) since Let's Encrypt can't issue certs for bare IPs. `Force HTTPS`/HSTS is disabled for IP-based sites (combining HSTS with an untrusted cert can lock browsers out of the site for up to a year with no way to bypass it).
 
 ### WAF (Coraza / OWASP CRS)
