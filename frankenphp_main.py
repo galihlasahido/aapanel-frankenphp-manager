@@ -1010,12 +1010,24 @@ class frankenphp_main:
 
     # ---- install/uninstall (custom async flow, dipoll dari index.html) ----
 
+    def _service_running(self):
+        shell = public.ExecShell("systemctl is-active %s" % self.__service)
+        return bool(shell and shell[0] and shell[0].strip() == "active")
+
     def CheckInstalled(self, get):
         installed = self._is_installed()
-        data = {"installed": installed}
+        data = {"installed": installed, "running": False}
         if installed:
+            # `running` WAJIB ikut di sini. Ini endpoint yang dipanggil fpInit() saat
+            # halaman dibuka, dan header merender pill statusnya dari fpState.running -
+            # kunci yang hilang dibaca JavaScript sebagai undefined, alias "Stopped".
+            # Akibatnya panel selalu bilang layanannya mati begitu halaman di-refresh,
+            # betapapun sehatnya service-nya, dan baru berubah setelah seseorang menekan
+            # Start/Stop/Restart (yang balasannya lewat GetServerStatus). Bohong yang
+            # meyakinkan: orang akan menekan Start pada layanan yang sedang melayani.
             data["version"] = self._get_version()
             data.update(self._get_config())
+            data["running"] = self._service_running()
         return data
 
     # Kurasi manual dari rilis resmi php/frankenphp - tiap rilis FrankenPHP membundel SATU
@@ -1363,9 +1375,7 @@ class frankenphp_main:
     def GetServerStatus(self, get):
         if not self._is_installed():
             return {"installed": False, "running": False}
-        shell = public.ExecShell("systemctl is-active %s" % self.__service)
-        running = bool(shell and shell[0] and shell[0].strip() == "active")
-        data = {"installed": True, "running": running, "version": self._get_version()}
+        data = {"installed": True, "running": self._service_running(), "version": self._get_version()}
         data.update(self._get_config())
         return data
 
