@@ -47,6 +47,12 @@ Backends are addressed as `host:port` and are reached over plain HTTP by default
 
 The domain field also accepts a plain **IPv4 address** if you don't have a domain pointed at the server yet — HTTPS then uses a self-signed certificate (Caddy's internal CA) since Let's Encrypt can't issue certs for bare IPs. `Force HTTPS`/HSTS is disabled for IP-based sites (combining HSTS with an untrusted cert can lock browsers out of the site for up to a year with no way to bypass it).
 
+### Password gate (HTTP Basic Auth)
+
+Any site, in any mode, can require a username and password before it serves anything — the browser's own login popup, in front of PHP and in front of the proxy. Useful for staging sites, internal tools, and admin areas that would otherwise be public the moment DNS points at them.
+
+Leave the path list empty to gate the whole site, or list prefixes (`/admin*`, `/staging`) to gate only those. Passwords are hashed with argon2id and only the hash is ever written to disk — the plaintext never reaches `config.json`, the Caddyfile, or any API response. When editing a site later, a blank password field means "unchanged", so adjusting anything else leaves the credentials alone.
+
 ### WAF (Coraza / OWASP CRS)
 
 Per domain, for `PHP + WAF` and `WAF + Load Balancer` modes:
