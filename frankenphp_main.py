@@ -262,6 +262,7 @@ class frankenphp_main:
             "basic_auth_username_invalid": "Invalid Basic Auth username (letters, numbers, . _ - @ only): {value}",
             "basic_auth_username_duplicate": "Duplicate Basic Auth username: {value}",
             "basic_auth_password_short": "Basic Auth password must be at least {n} characters",
+            "basic_auth_password_newline": "Basic Auth password cannot contain a line break",
             "basic_auth_password_required": "Set a password for Basic Auth user {value}",
             "basic_auth_hash_failed": "Could not hash the Basic Auth password: {detail}",
             "basic_auth_path_invalid": "Invalid Basic Auth path (e.g. /admin or /admin*): {value}",
@@ -380,6 +381,7 @@ class frankenphp_main:
             "basic_auth_username_invalid": "Username Basic Auth tidak valid (hanya huruf, angka, . _ - @): {value}",
             "basic_auth_username_duplicate": "Username Basic Auth ganda: {value}",
             "basic_auth_password_short": "Password Basic Auth minimal {n} karakter",
+            "basic_auth_password_newline": "Password Basic Auth tidak boleh mengandung ganti baris",
             "basic_auth_password_required": "Isi password untuk pemakai Basic Auth {value}",
             "basic_auth_hash_failed": "Password Basic Auth gagal di-hash: {detail}",
             "basic_auth_path_invalid": "Jalur Basic Auth tidak valid (mis. /admin atau /admin*): {value}",
@@ -512,7 +514,9 @@ class frankenphp_main:
         try:
             proc = subprocess.run(
                 [self.__bin, "hash-password", "--algorithm", "argon2id"],
-                input=plaintext, capture_output=True, text=True, timeout=30
+                # Newline penutup WAJIB: tanpa itu perintahnya berhenti dengan "Error: EOF"
+                # karena ia membaca satu BARIS dari stdin, bukan sampai stream tertutup.
+                input=plaintext + "\n", capture_output=True, text=True, timeout=30
             )
         except Exception as e:
             return None, str(e)
@@ -560,6 +564,10 @@ class frankenphp_main:
             if password:
                 if len(password) < self.__basic_auth_min_password:
                     raise ValueError(self._t("basic_auth_password_short", n=self.__basic_auth_min_password))
+                if "\n" in password or "\r" in password:
+                    # hash-password membaca SATU baris; kata sandi bernewline akan ter-hash
+                    # separuh, dan pemiliknya tidak akan pernah bisa masuk memakainya.
+                    raise ValueError(self._t("basic_auth_password_newline"))
                 digest, err = self._hash_password(password)
                 if not digest:
                     raise ValueError(self._t("basic_auth_hash_failed", detail=err or ""))
