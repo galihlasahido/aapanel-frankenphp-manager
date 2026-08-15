@@ -387,6 +387,13 @@
 			back_to_domain_list: '&larr; Back to domain list', doc_root_auto_placeholder: 'blank = automatic',
 			domain_ip_hint: 'A plain server IP is also accepted if you don\'t have a domain yet (e.g. 203.0.113.10) - HTTPS will use a self-signed certificate (browsers will show an untrusted-certificate warning), and Force HTTPS/HSTS cannot be enabled for an IP.',
 			backends_placeholder: 'host:port, one per line or comma-separated',
+			backend_tls: 'Backend speaks HTTPS/TLS',
+			backend_tls_hint: 'Turn this on when the backend itself listens with TLS. Leave it off and the connection to the backend is plain HTTP - a TLS backend answers that with a 302 to https://&lt;Host&gt;/, which sends the browser straight back here and loops (ERR_TOO_MANY_REDIRECTS), with nothing in any log to point at it.',
+			backend_tls_insecure: 'Skip certificate verification',
+			backend_tls_insecure_hint: 'Needed when the backend uses a self-signed certificate (typical for a local service on 127.0.0.1) - without it the request fails with 502. It only affects the hop to the backend, not the certificate visitors see.',
+			backend_tls_server_name: 'TLS server name',
+			backend_tls_server_name_placeholder: 'blank = same as the backend address',
+			backend_tls_server_name_hint: 'Set this when the backend certificate is issued for a name but you dial it by IP. With verification skipped it makes no difference.',
 			force_https_hint: 'HTTP&rarr;HTTPS redirect is already automatic via Caddy (Let\'s Encrypt). This toggle adds an HSTS header so the browser ALWAYS uses HTTPS for this domain after the first visit, even if the link is http://.',
 			email_placeholder: "Let's Encrypt notifications", add_btn: 'Add',
 			not_responding: 'not responding', adding_domain: 'Adding domain...',
@@ -582,6 +589,13 @@
 			back_to_domain_list: '&larr; Kembali ke daftar domain', doc_root_auto_placeholder: 'dikosongkan = otomatis',
 			domain_ip_hint: 'IP server polos juga bisa dipakai kalau belum punya domain (mis. 203.0.113.10) - HTTPS bakal pakai sertifikat self-signed (browser nampilin peringatan cert tidak terpercaya), dan Force HTTPS/HSTS tidak bisa diaktifkan buat IP.',
 			backends_placeholder: 'host:port, satu per baris atau pisah koma',
+			backend_tls: 'Backend bicara HTTPS/TLS',
+			backend_tls_hint: 'Nyalakan kalau backend-nya sendiri mendengarkan dengan TLS. Dibiarkan mati, sambungan ke backend memakai HTTP polos - dan backend TLS menjawabnya dengan 302 ke https://&lt;Host&gt;/, yang mengirim browser balik ke sini lagi sampai loop (ERR_TOO_MANY_REDIRECTS), tanpa satu pun jejak di log mana pun.',
+			backend_tls_insecure: 'Lewati verifikasi sertifikat',
+			backend_tls_insecure_hint: 'Dibutuhkan kalau backend memakai sertifikat self-signed (lazim untuk layanan lokal di 127.0.0.1) - tanpa ini hasilnya 502. Hanya berlaku pada sambungan ke backend, bukan pada sertifikat yang dilihat pengunjung.',
+			backend_tls_server_name: 'TLS server name',
+			backend_tls_server_name_placeholder: 'kosong = sama dengan alamat backend',
+			backend_tls_server_name_hint: 'Diisi kalau sertifikat backend diterbitkan untuk sebuah nama tapi dihubungi lewat IP. Kalau verifikasinya dilewati, isian ini tidak berpengaruh.',
 			force_https_hint: 'Redirect HTTP&rarr;HTTPS sudah otomatis by Caddy (Let\'s Encrypt). Toggle ini menambahkan header HSTS supaya browser SELALU pakai HTTPS ke domain ini setelah kunjungan pertama, walau linknya http://.',
 			email_placeholder: "notifikasi Let's Encrypt", add_btn: 'Tambah',
 			not_responding: 'tidak merespons', adding_domain: 'Menambahkan domain...',
@@ -2144,6 +2158,9 @@
 		var wafAutoblockWindowVal = site ? (site.waf_autoblock_window || 10) : 10;
 		var healthUriVal = site ? (site.health_uri || '') : '';
 		var healthIntervalVal = site ? (site.health_interval || 30) : 30;
+		var backendTlsVal = site ? !!site.backend_tls : false;
+		var backendTlsInsecureVal = site ? !!site.backend_tls_insecure : false;
+		var backendTlsServerNameVal = site ? (site.backend_tls_server_name || '') : '';
 		var policies = ['round_robin', 'least_conn', 'ip_hash', 'random', 'first'];
 		var paranoiaLevels = [1, 2, 3, 4];
 
@@ -2238,6 +2255,14 @@
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('lb_policy') + '</div><div class="fp-form-field"><select class="fp-select" id="fp_s_policy">' +
 			policies.map(function (p) { return '<option value="' + p + '"' + (policyVal === p ? ' selected' : '') + '>' + p + '</option>'; }).join('') +
 			'</select></div></div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('backend_tls') + '</div><div class="fp-form-field"><label class="fp-switch"><input type="checkbox" id="fp_s_backend_tls" ' + (backendTlsVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label>' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('backend_tls_hint') + '</div></div></div>' +
+			'<div class="fp_row_backend_tls">' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('backend_tls_insecure') + '</div><div class="fp-form-field"><label class="fp-switch"><input type="checkbox" id="fp_s_backend_tls_insecure" ' + (backendTlsInsecureVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label>' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('backend_tls_insecure_hint') + '</div></div></div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('backend_tls_server_name') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_backend_tls_server_name" placeholder="' + fpT('backend_tls_server_name_placeholder') + '" value="' + fpEsc(backendTlsServerNameVal) + '">' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('backend_tls_server_name_hint') + '</div></div></div>' +
+			'</div>' +
 			lbSection + '</div>' +
 			'<div class="fp_section_waf_wrap">' + wafSection + '</div>' +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('force_https') + '</div><div class="fp-form-field"><label class="fp-switch"><input type="checkbox" id="fp_s_force_https" ' + (forceHttpsVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label>' +
@@ -2259,8 +2284,10 @@
 			$('.fp_section_waf_wrap').toggle(m === 'waf_php' || m === 'waf_proxy');
 			$('.fp_section_worker_wrap').toggle(m !== 'waf_proxy');
 			$('.fp-mode-card').removeClass('sel').filter('[data-mode="' + m + '"]').addClass('sel');
+			$('.fp_row_backend_tls').toggle(m === 'waf_proxy' && $('#fp_s_backend_tls').is(':checked'));
 			fpFixLayerBox($('#fp_plugin').closest('.layui-layer'));
 		}
+		$('#fp_s_backend_tls').change(toggleFields);
 		$('#fp_mode_picker').on('click', '.fp-mode-card', function () {
 			$('#fp_s_mode').val($(this).data('mode'));
 			toggleFields();
@@ -2315,6 +2342,9 @@
 			data.lb_policy = $('#fp_s_policy').val();
 			data.health_uri = $('#fp_s_health_uri').val();
 			data.health_interval = $('#fp_s_health_interval').val();
+			data.backend_tls = $('#fp_s_backend_tls').is(':checked') ? '1' : '0';
+			data.backend_tls_insecure = $('#fp_s_backend_tls_insecure').is(':checked') ? '1' : '0';
+			data.backend_tls_server_name = $('#fp_s_backend_tls_server_name').val();
 		} else {
 			data.root = $('#fp_s_root').val();
 			data.worker_enabled = $('#fp_s_worker_enabled').is(':checked') ? '1' : '0';

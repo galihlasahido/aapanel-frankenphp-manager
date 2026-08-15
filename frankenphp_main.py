@@ -120,6 +120,8 @@ class frankenphp_main:
             "worker_port_unavailable": "No free port available for the standalone worker (range 9100-9999 all in use)",
             "ip_force_https_unsafe": "Force HTTPS (HSTS) cannot be enabled for an IP address - it uses a self-signed certificate (not trusted by browsers by default), and HSTS combined with an untrusted cert can lock browsers out of this site for up to a year with no way to bypass it. Turn off Force HTTPS first.",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
+            "backend_scheme_not_allowed": "Do not write the scheme in the backend address ({value}) - use host:port, and turn on \"Backend speaks HTTPS/TLS\" below if the backend listens with TLS.",
+            "backend_sni_invalid": "Invalid TLS server name (must be a domain): {value}",
             "ip_cidr_invalid": "Invalid IP/CIDR format: {value}",
             "http_method_unsupported": "Unsupported HTTP method: {value}",
             "upload_filter_entry_invalid": "Invalid entry: '{value}' (must be an extension like 'php' or a MIME type like 'image/jpeg')",
@@ -223,6 +225,8 @@ class frankenphp_main:
             "worker_port_unavailable": "Tidak ada port kosong buat worker standalone (range 9100-9999 semua terpakai)",
             "ip_force_https_unsafe": "Force HTTPS (HSTS) tidak bisa diaktifkan buat alamat IP - IP pakai sertifikat self-signed (default tidak dipercaya browser), dan HSTS dikombinasikan cert tidak terpercaya bisa mengunci browser dari situs ini sampai 1 tahun tanpa cara skip. Matikan Force HTTPS dulu.",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
+            "backend_scheme_not_allowed": "Jangan tulis skema di alamat backend ({value}) - isi host:port saja, lalu nyalakan \"Backend bicara HTTPS/TLS\" di bawah kalau backend-nya mendengarkan dengan TLS.",
+            "backend_sni_invalid": "TLS server name tidak valid (harus berupa domain): {value}",
             "ip_cidr_invalid": "Format IP/CIDR tidak valid: {value}",
             "http_method_unsupported": "Method HTTP tidak didukung: {value}",
             "upload_filter_entry_invalid": "Format entry tidak valid: '{value}' (harus ekstensi seperti 'php' atau MIME type seperti 'image/jpeg')",
@@ -316,6 +320,14 @@ class frankenphp_main:
         parts = re.split(r'[\s,]+', text.strip())
         backends = [p for p in parts if p]
         for b in backends:
+            # Skema di alamat backend ditolak dengan pesannya sendiri. Caddy sebenarnya
+            # menerima `https://host:port`, tapi bentuk itu memaksa verifikasi sertifikat -
+            # dan backend TLS lokal biasanya self-signed, jadi yang didapat 502 tanpa
+            # petunjuk. Satu kolom teks yang diam-diam berarti dua hal berbeda ("pakai TLS"
+            # dan "verifikasi sertifikatnya") adalah kolom yang salah dipakai orang; TLS
+            # diatur lewat centangnya sendiri di bawah, yang punya opsi verifikasi terpisah.
+            if "://" in b:
+                raise ValueError(self._t("backend_scheme_not_allowed", value=b))
             if not self.__backend_re.match(b):
                 raise ValueError(self._t("backend_format_invalid", value=b))
         return backends
@@ -832,6 +844,32 @@ class frankenphp_main:
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return '"%s"' % escaped
 
+    def _backend_transport_block(self, s):
+        """Blok `transport http` buat backend yang bicara HTTPS.
+
+        Alamat backend disimpan tanpa skema (host:port), dan tanpa blok ini Caddy SELALU
+        menyambung ke backend dengan HTTP polos. Backend yang mendengarkan dengan TLS tidak
+        gagal dengan jelas saat disambung HTTP polos - ia menjawab 302 ke `https://<Host>/`,
+        dan karena Location-nya dibangun dari header Host yang kita teruskan, browser
+        dikirim balik ke domain ini lagi: ERR_TOO_MANY_REDIRECTS, tanpa satu pun galat di
+        log Caddy maupun log backend. Kejadian nyata di panel.advance.web.id, 15 Agustus
+        2026 - butuh probe langsung ke backend buat melihatnya, karena dari luar bentuknya
+        cuma "situsnya loop".
+        """
+        if not s.get("backend_tls"):
+            return ""
+        lines = "\t\t\ttls\n"
+        if s.get("backend_tls_insecure"):
+            # Backend TLS lokal (mis. aaPanel di 127.0.0.1) memakai sertifikat self-signed.
+            # Verifikasinya tidak menambah keamanan di jalur loopback yang tidak pernah
+            # keluar dari mesin, tapi kalau tidak dimatikan hasilnya 502 - jadi opsinya
+            # dibuat eksplisit, bukan diam-diam selalu menyala.
+            lines += "\t\t\ttls_insecure_skip_verify\n"
+        server_name = (s.get("backend_tls_server_name") or "").strip()
+        if server_name:
+            lines += "\t\t\ttls_server_name %s\n" % self._quote_caddy_arg(server_name)
+        return "\t\ttransport http {\n%s\t\t}\n" % lines
+
     def _site_block(self, s):
         mode = s.get("mode", "php")
         body = "\theader -Server\n"
@@ -883,6 +921,7 @@ class frankenphp_main:
                     "\t\thealth_interval %ss\n"
                     "\t\thealth_timeout 5s\n"
                 ) % (health_uri, health_interval)
+            rp_body += self._backend_transport_block(s)
             body += "\treverse_proxy %s {\n%s\t}\n" % (" ".join(backends), rp_body)
         elif s.get("worker_enabled") and s.get("worker_type") == "standalone" and s.get("worker_port"):
             # Worker standalone: proses `frankenphp php-server --worker=...` TERPISAH dikelola
@@ -1513,10 +1552,24 @@ class frankenphp_main:
                 return None, self._t("health_interval_must_be_number")
             if health_interval < 5 or health_interval > 3600:
                 return None, self._t("health_interval_range")
+            backend_tls = str(get.backend_tls).strip() == "1" if 'backend_tls' in get else False
+            backend_tls_insecure = str(get.backend_tls_insecure).strip() == "1" if 'backend_tls_insecure' in get else False
+            backend_tls_server_name = get.backend_tls_server_name.strip() if ('backend_tls_server_name' in get and get.backend_tls_server_name.strip()) else ""
+            if backend_tls_server_name and not self.__domain_re.match(backend_tls_server_name):
+                return None, self._t("backend_sni_invalid", value=backend_tls_server_name)
+            if not backend_tls:
+                # Opsi turunan dinolkan saat TLS-nya mati, biar isi config.json tidak pernah
+                # menjanjikan sesuatu yang tidak dikeluarkan generator Caddyfile-nya.
+                backend_tls_insecure = False
+                backend_tls_server_name = ""
+
             site["backends"] = backends
             site["lb_policy"] = policy
             site["health_uri"] = health_uri
             site["health_interval"] = health_interval
+            site["backend_tls"] = backend_tls
+            site["backend_tls_insecure"] = backend_tls_insecure
+            site["backend_tls_server_name"] = backend_tls_server_name
         else:
             root = get.root.strip() if ('root' in get and get.root.strip()) else default_root
             if not os.path.exists(root):
@@ -1807,10 +1860,16 @@ class frankenphp_main:
             return public.ReturnMsg(False, self._t("domain_not_found_or_not_lb"))
 
         path = site.get("health_uri") or "/"
+        # Skema pengecekan HARUS mengikuti setelan backend_tls situsnya. Kalau tidak, backend
+        # TLS selalu dicek lewat HTTP polos dan dilaporkan sehat berdasarkan 302 balasannya -
+        # alat diagnosanya sendiri yang jadi berbohong, persis di kasus yang paling butuh
+        # diagnosa (lihat _backend_transport_block).
+        scheme = "https" if site.get("backend_tls") else "http"
+        insecure = " -k" if site.get("backend_tls_insecure") else ""
         results = []
         for b in site.get("backends", []):
             shell = public.ExecShell(
-                "curl -s -o /dev/null -w '%%{http_code}|%%{time_total}' --max-time 3 'http://%s%s'" % (b, path)
+                "curl -s%s -o /dev/null -w '%%{http_code}|%%{time_total}' --max-time 3 '%s://%s%s'" % (insecure, scheme, b, path)
             )
             out = (shell[0] or "").strip() if shell else ""
             healthy = False
