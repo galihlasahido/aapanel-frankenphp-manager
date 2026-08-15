@@ -96,7 +96,7 @@ case "$action" in
         # phpinfo() di sini mengeluarkan HTML meski PHP_SAPI melaporkan "cli": FrankenPHP
         # tidak menyetel phpinfo_as_text seperti binary PHP CLI asli. Tag-nya dilucuti
         # supaya `php -i` bisa dibaca dan bisa di-grep sebagaimana lazimnya dipakai.
-        php_run -r 'ob_start(); phpinfo(); $out = ob_get_clean(); if (stripos($out, "<html") !== false || stripos($out, "<table") !== false) { $out = html_entity_decode(strip_tags(str_replace(array("</tr>", "</h2>", "</h1>"), "\n", $out)), ENT_QUOTES); $out = preg_replace("/\n{3,}/", "\n\n", $out); } echo $out;'
+        php_run -r 'ob_start(); phpinfo(); $out = ob_get_clean(); if (stripos($out, "<html") !== false || stripos($out, "<table") !== false) { $out = preg_replace("#<(style|script)[^>]*>.*?</\\1>#is", "", $out); $out = html_entity_decode(strip_tags(str_replace(array("</tr>", "</h2>", "</h1>"), "\n", $out)), ENT_QUOTES); $out = preg_replace("/\n{3,}/", "\n\n", $out); } echo $out;'
         ;;
     ini)
         php_run -r 'printf("Configuration File (php.ini) Path: %s\nLoaded Configuration File: %s\nScan for additional .ini files in: %s\nAdditional .ini files parsed: %s\n", PHP_CONFIG_FILE_PATH, php_ini_loaded_file() ?: "(none)", PHP_CONFIG_FILE_SCAN_DIR ?: "(none)", php_ini_scanned_files() ?: "(none)");'
