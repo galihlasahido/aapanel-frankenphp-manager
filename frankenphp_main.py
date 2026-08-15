@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # coding: utf-8
-import sys, os, json, time, re, sqlite3, socket, ipaddress
+import sys, os, json, time, re, sqlite3, socket, ipaddress, subprocess
 
 os.chdir("/www/server/panel")
 sys.path.append("class/")
@@ -258,6 +258,14 @@ class frankenphp_main:
             "ip_force_https_unsafe": "Force HTTPS (HSTS) cannot be enabled for an IP address - it uses a self-signed certificate (not trusted by browsers by default), and HSTS combined with an untrusted cert can lock browsers out of this site for up to a year with no way to bypass it. Turn off Force HTTPS first.",
             "backend_format_invalid": "Invalid backend format (must be host:port): {value}",
             "backend_scheme_not_allowed": "Do not write the scheme in the backend address ({value}) - use host:port, and turn on \"Backend speaks HTTPS/TLS\" below if the backend listens with TLS.",
+            "basic_auth_users_invalid": "Invalid Basic Auth credential list",
+            "basic_auth_username_invalid": "Invalid Basic Auth username (letters, numbers, . _ - @ only): {value}",
+            "basic_auth_username_duplicate": "Duplicate Basic Auth username: {value}",
+            "basic_auth_password_short": "Basic Auth password must be at least {n} characters",
+            "basic_auth_password_required": "Set a password for Basic Auth user {value}",
+            "basic_auth_hash_failed": "Could not hash the Basic Auth password: {detail}",
+            "basic_auth_path_invalid": "Invalid Basic Auth path (e.g. /admin or /admin*): {value}",
+            "basic_auth_needs_user": "Basic Auth is enabled but no user is defined - the site would be closed to everyone, including you",
             "bypass_path_must_start_slash": "WAF bypass path must start with / : {value}",
             "bypass_path_invalid": "Invalid WAF bypass path (letters, numbers, . _ - / only, no query string): {value}",
             "geoip_download_failed": "Could not download the GeoIP database ({files}). Check the server's outbound internet access and try again.",
@@ -368,6 +376,14 @@ class frankenphp_main:
             "ip_force_https_unsafe": "Force HTTPS (HSTS) tidak bisa diaktifkan buat alamat IP - IP pakai sertifikat self-signed (default tidak dipercaya browser), dan HSTS dikombinasikan cert tidak terpercaya bisa mengunci browser dari situs ini sampai 1 tahun tanpa cara skip. Matikan Force HTTPS dulu.",
             "backend_format_invalid": "Format backend tidak valid (harus host:port): {value}",
             "backend_scheme_not_allowed": "Jangan tulis skema di alamat backend ({value}) - isi host:port saja, lalu nyalakan \"Backend bicara HTTPS/TLS\" di bawah kalau backend-nya mendengarkan dengan TLS.",
+            "basic_auth_users_invalid": "Daftar kredensial Basic Auth tidak valid",
+            "basic_auth_username_invalid": "Username Basic Auth tidak valid (hanya huruf, angka, . _ - @): {value}",
+            "basic_auth_username_duplicate": "Username Basic Auth ganda: {value}",
+            "basic_auth_password_short": "Password Basic Auth minimal {n} karakter",
+            "basic_auth_password_required": "Isi password untuk pemakai Basic Auth {value}",
+            "basic_auth_hash_failed": "Password Basic Auth gagal di-hash: {detail}",
+            "basic_auth_path_invalid": "Jalur Basic Auth tidak valid (mis. /admin atau /admin*): {value}",
+            "basic_auth_needs_user": "Basic Auth dinyalakan tapi belum ada pemakainya - situsnya akan tertutup untuk semua orang, termasuk Anda",
             "bypass_path_must_start_slash": "Jalur pengecualian WAF harus diawali / : {value}",
             "bypass_path_invalid": "Jalur pengecualian WAF tidak valid (hanya huruf, angka, . _ - / dan tanpa query string): {value}",
             "geoip_download_failed": "Database GeoIP gagal diunduh ({files}). Periksa akses internet keluar dari server ini, lalu coba lagi.",
@@ -478,6 +494,93 @@ class frankenphp_main:
             if not self.__backend_re.match(b):
                 raise ValueError(self._t("backend_format_invalid", value=b))
         return backends
+
+    # Kredensial Basic Auth. Username masuk mentah ke Caddyfile sebagai token, jadi
+    # charset-nya ditutup rapat - spasi/kutip/kurung kurawal akan memecah directive-nya.
+    __basic_auth_user_re = re.compile(r'^[A-Za-z0-9._@\-]{1,64}$')
+    # Jalur boleh berakhir wildcard (`/admin*`), bentuk matcher path bawaan Caddy.
+    __basic_auth_path_re = re.compile(r'^/[A-Za-z0-9._\-/]{0,64}\*?$')
+    __basic_auth_min_password = 8
+
+    def _hash_password(self, plaintext):
+        """Hash argon2id lewat `frankenphp hash-password`, plaintext dikirim via STDIN.
+
+        Lewat argumen perintah, kata sandinya akan terbaca siapa pun di mesin ini selama
+        proses itu hidup (`ps aux`) - dan pada panel yang dipakai bersama, itu berarti
+        kata sandi gerbang bocor ke sesama pengguna server hanya karena cara memanggilnya.
+        """
+        try:
+            proc = subprocess.run(
+                [self.__bin, "hash-password", "--algorithm", "argon2id"],
+                input=plaintext, capture_output=True, text=True, timeout=30
+            )
+        except Exception as e:
+            return None, str(e)
+        digest = (proc.stdout or "").strip().splitlines()
+        digest = digest[-1].strip() if digest else ""
+        if proc.returncode != 0 or not digest.startswith("$argon2id$"):
+            return None, (proc.stderr or "").strip()[:200]
+        return digest, None
+
+    def _parse_basic_auth_users(self, raw, existing_users):
+        """Daftar kredensial dari form -> [{"username":..., "hash":...}].
+
+        Kata sandi kosong pada pemakai yang SUDAH ada berarti "biarkan seperti semula".
+        Tanpa aturan itu, menyunting hal lain di situs yang sama (menambah domain, ubah
+        WAF) akan menghapus kredensial yang tidak pernah disentuh, dan gerbangnya
+        terkunci tanpa ada yang merasa mengubahnya.
+        """
+        try:
+            rows = json.loads(raw) if raw else []
+        except Exception:
+            raise ValueError(self._t("basic_auth_users_invalid"))
+        if not isinstance(rows, list):
+            raise ValueError(self._t("basic_auth_users_invalid"))
+
+        known = {}
+        for u in (existing_users or []):
+            if u.get("username") and u.get("hash"):
+                known[u["username"]] = u["hash"]
+
+        users = []
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError(self._t("basic_auth_users_invalid"))
+            username = str(row.get("username", "")).strip()
+            password = str(row.get("password", "") or "")
+            if not username:
+                continue
+            if not self.__basic_auth_user_re.match(username):
+                raise ValueError(self._t("basic_auth_username_invalid", value=username))
+            if username in seen:
+                raise ValueError(self._t("basic_auth_username_duplicate", value=username))
+            seen.add(username)
+
+            if password:
+                if len(password) < self.__basic_auth_min_password:
+                    raise ValueError(self._t("basic_auth_password_short", n=self.__basic_auth_min_password))
+                digest, err = self._hash_password(password)
+                if not digest:
+                    raise ValueError(self._t("basic_auth_hash_failed", detail=err or ""))
+                users.append({"username": username, "hash": digest})
+            elif username in known:
+                users.append({"username": username, "hash": known[username]})
+            else:
+                raise ValueError(self._t("basic_auth_password_required", value=username))
+        return users
+
+    def _parse_basic_auth_paths(self, text):
+        if not text:
+            return []
+        paths = []
+        for p in re.split(r'[\s,]+', text.strip()):
+            if not p:
+                continue
+            if not self.__basic_auth_path_re.match(p):
+                raise ValueError(self._t("basic_auth_path_invalid", value=p))
+            paths.append(p)
+        return paths
 
     # Prefix path yang boleh dilewatkan dari pemeriksaan CRS. Sengaja sempit: hanya
     # karakter path biasa, tanpa spasi, tanpa regex, tanpa query string.
@@ -1141,6 +1244,38 @@ class frankenphp_main:
             lines += "\t\t\ttls_server_name %s\n" % self._quote_caddy_arg(server_name)
         return "\t\ttransport http {\n%s\t\t}\n" % lines
 
+    def _basic_auth_block(self, s):
+        """Gerbang HTTP Basic Auth (popup username/password) untuk sebuah situs.
+
+        Yang tersimpan HANYA hash argon2id - kata sandinya sendiri tidak pernah ditulis
+        ke config.json maupun ke Caddyfile.
+
+        Tanpa daftar jalur, seluruh situs digerbangi. Dengan jalur dipakai named matcher,
+        karena slot matcher milik `basic_auth` hanya menampung SATU token.
+        """
+        if not s.get("basic_auth_enabled"):
+            return ""
+
+        users = [u for u in (s.get("basic_auth_users") or []) if u.get("username") and u.get("hash")]
+        if not users:
+            # Blok tanpa satu pun kredensial adalah gerbang yang tidak bisa dilewati siapa
+            # pun. Lebih baik tidak memasang gerbangnya daripada mengunci situs orang
+            # tanpa ada yang memegang kuncinya.
+            return ""
+
+        paths = [p for p in (s.get("basic_auth_paths") or []) if p]
+        prefix = ""
+        matcher = ""
+        if paths:
+            prefix = "\t@basic_auth_paths path %s\n" % " ".join(paths)
+            matcher = "@basic_auth_paths "
+
+        realm = (s.get("basic_auth_realm") or "").strip()
+        realm_arg = (" %s" % self._quote_caddy_arg(realm)) if realm else ""
+
+        credentials = "".join("\t\t%s %s\n" % (u["username"], u["hash"]) for u in users)
+        return "%s\tbasic_auth %sargon2id%s {\n%s\t}\n" % (prefix, matcher, realm_arg, credentials)
+
     def _site_block(self, s):
         mode = s.get("mode", "php")
         body = "\theader -Server\n"
@@ -1158,6 +1293,7 @@ class frankenphp_main:
             # supaya browser SELALU pakai HTTPS ke depannya (termasuk kunjungan pertama via
             # link http://), dan tidak bisa di-downgrade lewat MITM.
             body += "\theader Strict-Transport-Security \"max-age=31536000; includeSubDomains\"\n"
+        body += self._basic_auth_block(s)
         if mode in ("waf_php", "waf_proxy"):
             # PENTING - ditemukan via testing curl langsung: kalau coraza_waf men-deny request,
             # coraza-caddy tidak menulis response secara normal - ia me-return caddyhttp.HandlerError
@@ -1341,7 +1477,7 @@ class frankenphp_main:
             # Start/Stop/Restart (yang balasannya lewat GetServerStatus). Bohong yang
             # meyakinkan: orang akan menekan Start pada layanan yang sedang melayani.
             data["version"] = self._get_version()
-            data.update(self._get_config())
+            data.update(self._config_for_ui())
             data["running"] = self._service_running()
         return data
 
@@ -1691,7 +1827,7 @@ class frankenphp_main:
         if not self._is_installed():
             return {"installed": False, "running": False}
         data = {"installed": True, "running": self._service_running(), "version": self._get_version()}
-        data.update(self._get_config())
+        data.update(self._config_for_ui())
         return data
 
     def StartService(self, get):
@@ -1711,8 +1847,23 @@ class frankenphp_main:
 
     # ---- config ----
 
+    def _config_for_ui(self):
+        """Salinan config untuk dikirim ke browser, TANPA hash kredensial.
+
+        Hash argon2id bukan kata sandi, tapi tidak ada satu pun alasan browser perlu
+        menerimanya - dan sekali terkirim, ia ikut nongkrong di riwayat DevTools dan
+        cache siapa pun yang membuka panel. Yang dikirim hanya nama pemakainya.
+        """
+        cfg = json.loads(json.dumps(self._get_config()))
+        for site in cfg.get("sites", []):
+            site["basic_auth_users"] = [
+                {"username": u.get("username", ""), "has_password": bool(u.get("hash"))}
+                for u in (site.get("basic_auth_users") or [])
+            ]
+        return cfg
+
     def GetConfig(self, get):
-        return self._get_config()
+        return self._config_for_ui()
 
     def SetConfig(self, get):
         """Atur port+root fallback, dipakai HANYA saat belum ada domain terdaftar (sites kosong)."""
@@ -1760,6 +1911,26 @@ class frankenphp_main:
         force_https = str(get.force_https).strip() == "1" if 'force_https' in get else False
 
         site = {"domain": domain, "mode": mode, "email": email, "force_https": force_https}
+
+        # Basic Auth berlaku di semua mode (php / php+WAF / proxy) - gerbangnya di depan
+        # apa pun yang melayani situs itu.
+        basic_auth_enabled = str(get.basic_auth_enabled).strip() == "1" if 'basic_auth_enabled' in get else False
+        try:
+            basic_auth_users = self._parse_basic_auth_users(
+                get.basic_auth_users if 'basic_auth_users' in get else "",
+                (existing or {}).get("basic_auth_users", [])
+            )
+            basic_auth_paths = self._parse_basic_auth_paths(
+                get.basic_auth_paths if 'basic_auth_paths' in get else ""
+            )
+        except ValueError as e:
+            return None, str(e)
+        if basic_auth_enabled and not basic_auth_users:
+            return None, self._t("basic_auth_needs_user")
+        site["basic_auth_enabled"] = basic_auth_enabled
+        site["basic_auth_users"] = basic_auth_users
+        site["basic_auth_paths"] = basic_auth_paths
+        site["basic_auth_realm"] = (get.basic_auth_realm.strip() if ('basic_auth_realm' in get and get.basic_auth_realm.strip()) else "")
 
         if mode in ("waf_php", "waf_proxy"):
             engine = get.waf_engine.strip() if ('waf_engine' in get and get.waf_engine.strip()) else "on"

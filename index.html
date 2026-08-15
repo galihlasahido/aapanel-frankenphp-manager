@@ -378,6 +378,20 @@
 			waf_rule_id_label: 'Rule ID:',
 			waf_whitelist_placeholder: 'optional, one IP/CIDR per line, e.g. 203.0.113.5 or 10.0.0.0/8',
 			waf_whitelist_hint2: 'IPs on this list FULLY bypass the WAF (no rule is evaluated at all) &mdash; use for trusted office/monitoring IPs.',
+			basic_auth_title: 'Password gate (HTTP Basic Auth)',
+			basic_auth_enable: 'Require username & password',
+			basic_auth_hint: 'The browser shows a login popup before anything on this site is served. It runs in front of PHP and the proxy, so nothing behind it is reached without valid credentials. Passwords are stored as argon2id hashes; the password itself is never written to disk.',
+			basic_auth_realm: 'Realm (optional)',
+			basic_auth_realm_placeholder: 'text shown in the browser popup',
+			basic_auth_paths_label: 'Limit to paths (optional)',
+			basic_auth_paths_placeholder: 'blank = whole site, e.g. /admin* or /staging',
+			basic_auth_users: 'Users',
+			basic_auth_username: 'Username',
+			basic_auth_password: 'Password',
+			basic_auth_password_keep: 'leave blank = unchanged',
+			basic_auth_add_user: '+ Add user',
+			basic_auth_remove: 'Remove',
+			basic_auth_lockout_warning: 'You are about to gate this whole site. Make sure the username and password work before you close this panel.',
 			bypass_paths_label: 'Paths exempt from CRS',
 			bypass_paths_placeholder: 'optional, one path prefix per line, e.g. /v2 or /admin/api',
 			bypass_paths_hint: 'Requests under these prefixes skip the OWASP rules entirely; every other path is still inspected. Use it for an admin area behind this WAF &mdash; a control panel legitimately sends SQL, shell commands, file paths and passwords, which is exactly what CRS is built to reject. An aaPanel session segment (/apsess_&hellip;) in front of the prefix is matched too.',
@@ -587,6 +601,20 @@
 			waf_rule_id_label: 'Rule ID:',
 			waf_whitelist_placeholder: 'opsional, satu IP/CIDR per baris, mis. 203.0.113.5 atau 10.0.0.0/8',
 			waf_whitelist_hint2: 'IP di daftar ini SEPENUHNYA melewati WAF (tidak dievaluasi rule apa pun) &mdash; pakai untuk IP kantor/monitoring tepercaya.',
+			basic_auth_title: 'Gerbang kata sandi (HTTP Basic Auth)',
+			basic_auth_enable: 'Wajib username &amp; password',
+			basic_auth_hint: 'Peramban menampilkan popup login sebelum apa pun di situs ini dilayani. Gerbangnya berdiri di depan PHP maupun proxy, jadi tidak ada yang di belakangnya bisa dicapai tanpa kredensial yang benar. Kata sandi disimpan sebagai hash argon2id; kata sandinya sendiri tidak pernah ditulis ke disk.',
+			basic_auth_realm: 'Realm (opsional)',
+			basic_auth_realm_placeholder: 'teks yang tampil di popup peramban',
+			basic_auth_paths_label: 'Batasi ke jalur (opsional)',
+			basic_auth_paths_placeholder: 'kosong = seluruh situs, mis. /admin* atau /staging',
+			basic_auth_users: 'Pemakai',
+			basic_auth_username: 'Username',
+			basic_auth_password: 'Password',
+			basic_auth_password_keep: 'dikosongkan = tidak diubah',
+			basic_auth_add_user: '+ Tambah pemakai',
+			basic_auth_remove: 'Hapus',
+			basic_auth_lockout_warning: 'Seluruh situs ini akan digerbangi. Pastikan username dan password-nya benar-benar bisa dipakai sebelum menutup panel.',
 			bypass_paths_label: 'Jalur yang dikecualikan dari CRS',
 			bypass_paths_placeholder: 'opsional, satu prefix jalur per baris, mis. /v2 atau /admin/api',
 			bypass_paths_hint: 'Request di bawah prefix ini melewati rule OWASP sepenuhnya; jalur lain tetap diperiksa. Dipakai untuk area administrasi di belakang WAF ini &mdash; panel kendali memang wajar mengirim SQL, perintah shell, path berkas, dan password, yaitu persis yang dirancang ditolak CRS. Segmen sesi aaPanel (/apsess_&hellip;) di depan prefix ikut dicocokkan.',
@@ -2185,6 +2213,10 @@
 		var httpMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'QUERY'];
 		var wafWhitelistVal = site && site.waf_whitelist ? site.waf_whitelist.join('\n') : '';
 		var bypassPathsVal = site && site.waf_bypass_paths ? site.waf_bypass_paths.join('\n') : '';
+		var baEnabledVal = site ? !!site.basic_auth_enabled : false;
+		var baRealmVal = site ? (site.basic_auth_realm || '') : '';
+		var baPathsVal = site && site.basic_auth_paths ? site.basic_auth_paths.join('\n') : '';
+		var baUsersVal = site && site.basic_auth_users ? site.basic_auth_users : [];
 		var wafBlacklistVal = site && site.waf_blacklist_manual ? site.waf_blacklist_manual.join('\n') : '';
 		var uploadFilterEnabledVal = site ? !!site.waf_upload_filter_enabled : false;
 		var uploadFilterModeVal = site ? (site.waf_upload_filter_mode || 'blacklist') : 'blacklist';
@@ -2306,6 +2338,16 @@
 			'</div>' +
 			lbSection + '</div>' +
 			'<div class="fp_section_waf_wrap">' + wafSection + '</div>' +
+			'<div class="fp-subsection">' +
+			'<div class="fp-subsection-title">' + fpT('basic_auth_title') + '</div>' +
+			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('basic_auth_enable') + '</div><div class="fp-form-field"><label class="fp-switch"><input type="checkbox" id="fp_s_ba_enabled" ' + (baEnabledVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label>' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('basic_auth_hint') + '</div></div></div>' +
+			'<div class="fp_row_ba">' +
+			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('basic_auth_users') + '</div><div class="fp-form-field"><div id="fp_ba_users"></div>' +
+			'<button type="button" class="btn btn-default btn-sm" id="fp_ba_add" style="margin-top:6px;">' + fpT('basic_auth_add_user') + '</button></div></div>' +
+			'<div class="fp-subrow" style="margin-top:8px;"><div class="fp-form-label">' + fpT('basic_auth_realm') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_ba_realm" placeholder="' + fpT('basic_auth_realm_placeholder') + '" value="' + fpEsc(baRealmVal) + '"></div></div>' +
+			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('basic_auth_paths_label') + '</div><div class="fp-form-field"><textarea class="fp-textarea" id="fp_s_ba_paths" placeholder="' + fpT('basic_auth_paths_placeholder') + '">' + fpEsc(baPathsVal) + '</textarea></div></div>' +
+			'</div></div>' +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('force_https') + '</div><div class="fp-form-field"><label class="fp-switch"><input type="checkbox" id="fp_s_force_https" ' + (forceHttpsVal ? 'checked' : '') + '><span class="fp-switch-track"></span></label>' +
 			'<div class="fp-hint" style="margin-top:4px;">' + fpT('force_https_hint') + '</div></div></div>' +
 			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('email_optional') + '</div><div class="fp-form-field"><input class="fp-input" id="fp_s_email" placeholder="' + fpT('email_placeholder') + '" value="' + fpEsc(emailVal) + '"></div></div>' +
@@ -2332,6 +2374,42 @@
 		$('#fp_mode_picker').on('click', '.fp-mode-card', function () {
 			$('#fp_s_mode').val($(this).data('mode'));
 			toggleFields();
+
+		// Baris kredensial. Password yang sudah tersimpan TIDAK pernah dikirim balik ke
+		// browser - kolomnya dibiarkan kosong, dan kosong berarti "jangan diubah", supaya
+		// menyunting hal lain di situs ini tidak diam-diam menghapus kredensialnya.
+		function fpBaCollectUsers() {
+			return $('#fp_ba_users .fp-ba-user').map(function () {
+				return {
+					username: $(this).find('.fp-ba-username').val().trim(),
+					password: $(this).find('.fp-ba-password').val(),
+					has_password: $(this).find('.fp-ba-password').data('has') === 1
+				};
+			}).get();
+		}
+		function fpBaRenderUsers(list) {
+			$('#fp_ba_users').html(list.map(function (u, i) {
+				return '<div class="fp-ba-user" style="display:flex;gap:6px;margin-bottom:6px;align-items:center;">' +
+					'<input class="fp-input fp-ba-username" style="flex:1;" placeholder="' + fpT('basic_auth_username') + '" value="' + fpEsc(u.username || '') + '">' +
+					'<input class="fp-input fp-ba-password" type="password" autocomplete="new-password" data-has="' + (u.has_password ? 1 : 0) + '" style="flex:1;" placeholder="' + (u.has_password ? fpT('basic_auth_password_keep') : fpT('basic_auth_password')) + '">' +
+					'<button type="button" class="btn btn-default btn-sm fp-ba-del" data-i="' + i + '">' + fpT('basic_auth_remove') + '</button>' +
+					'</div>';
+			}).join(''));
+		}
+		fpBaRenderUsers(baUsersVal.length ? baUsersVal : [{ username: '', has_password: false }]);
+		$('#fp_ba_add').click(function () {
+			var cur = fpBaCollectUsers();
+			cur.push({ username: '', has_password: false });
+			fpBaRenderUsers(cur);
+		});
+		$('#fp_ba_users').on('click', '.fp-ba-del', function () {
+			var cur = fpBaCollectUsers();
+			cur.splice(parseInt($(this).data('i'), 10), 1);
+			fpBaRenderUsers(cur.length ? cur : [{ username: '', has_password: false }]);
+		});
+		$('#fp_s_ba_enabled').change(function () { $('.fp_row_ba').toggle($(this).is(':checked')); });
+		$('.fp_row_ba').toggle(baEnabledVal);
+		window.fpBaCollectUsers = fpBaCollectUsers;
 		});
 		$('#fp_s_waf_engine .fp-seg-opt').click(function () {
 			$('#fp_s_waf_engine .fp-seg-opt').removeClass('sel');
@@ -2378,6 +2456,10 @@
 		if (!domain) { layer.msg(fpT('domain_required'), { icon: 2 }); return; }
 		var mode = $('#fp_s_mode').val();
 		var data = { domain: domain, mode: mode, email: $('#fp_s_email').val(), force_https: $('#fp_s_force_https').is(':checked') ? '1' : '0' };
+		data.basic_auth_enabled = $('#fp_s_ba_enabled').is(':checked') ? '1' : '0';
+		data.basic_auth_realm = $('#fp_s_ba_realm').val();
+		data.basic_auth_paths = $('#fp_s_ba_paths').val();
+		data.basic_auth_users = JSON.stringify(window.fpBaCollectUsers ? window.fpBaCollectUsers() : []);
 		if (mode === 'waf_proxy') {
 			data.backends = $('#fp_s_backends').val();
 			data.lb_policy = $('#fp_s_policy').val();
