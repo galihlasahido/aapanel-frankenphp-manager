@@ -25,6 +25,10 @@ class frankenphp_main:
     # jauh lebih besar volumenya dari tabel agregat lain, jadi dibatasi 30 hari (beda dari
     # keputusan retensi tak terbatas utk data agregat) supaya stats.db tidak membengkak tanpa batas.
     __request_log_retention_days = 30
+    # IP yang tercatat pernah MEMBUKA halaman plugin ini (artinya lolos login aaPanel),
+    # dipakai sebagai pagar supaya auto-block tidak pernah mengunci operatornya sendiri.
+    __admin_ips_file = __install_dir + "/data/admin_ips.json"
+    __admin_ip_ttl_days = 7
 
     # ---- i18n ----
     __lang_file = __install_dir + "/data/lang.json"
@@ -1102,11 +1106,54 @@ class frankenphp_main:
 
     # ---- install/uninstall (custom async flow, dipoll dari index.html) ----
 
+    def _remember_admin_ip(self):
+        """Catat IP yang baru saja membuka halaman plugin ini.
+
+        Untuk sampai ke sini seseorang harus sudah lolos login aaPanel, jadi IP-nya adalah
+        IP operator - dan auto-block tidak boleh pernah memblokirnya. Tanpa pagar ini,
+        satu salah tangkap WAF pada formulir panel sendiri cukup untuk mengunci pemilik
+        server dari panelnya: rule blacklist berjalan di phase 1 dan menolak SEMUA jalur,
+        bukan hanya yang memicu, sehingga satu-satunya jalan pulih adalah lewat SSH.
+        Sudah terjadi (15 Agustus 2026).
+        """
+        try:
+            ip = public.GetClientIp()
+        except Exception:
+            return
+        if not ip:
+            return
+        seen = self._admin_ips_raw()
+        seen[ip] = int(time.time())
+        cutoff = time.time() - self.__admin_ip_ttl_days * 86400
+        seen = {k: v for k, v in seen.items() if v >= cutoff}
+        try:
+            os.makedirs(os.path.dirname(self.__admin_ips_file), exist_ok=True)
+            public.WriteFile(self.__admin_ips_file, json.dumps(seen))
+        except Exception:
+            pass
+
+    def _admin_ips_raw(self):
+        if not os.path.exists(self.__admin_ips_file):
+            return {}
+        try:
+            data = json.loads(public.ReadFile(self.__admin_ips_file) or "{}")
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _admin_ips(self):
+        """IP operator yang masih dalam masa berlaku - kebal auto-block."""
+        cutoff = time.time() - self.__admin_ip_ttl_days * 86400
+        return {ip for ip, ts in self._admin_ips_raw().items() if ts >= cutoff}
+
     def _service_running(self):
         shell = public.ExecShell("systemctl is-active %s" % self.__service)
         return bool(shell and shell[0] and shell[0].strip() == "active")
 
     def CheckInstalled(self, get):
+        # Dipanggil setiap kali halaman plugin dibuka - satu-satunya titik yang pasti
+        # dilewati operator, jadi di sinilah IP-nya dicatat.
+        self._remember_admin_ip()
         installed = self._is_installed()
         data = {"installed": installed, "running": False}
         if installed:
@@ -2027,7 +2074,7 @@ class frankenphp_main:
             if not ip:
                 continue
             counts[ip] = counts.get(ip, 0) + 1
-        skip = set(site.get("waf_whitelist", [])) | set(site.get("waf_blacklist_auto", []))
+        skip = set(site.get("waf_whitelist", [])) | set(site.get("waf_blacklist_auto", [])) | self._admin_ips()
         return [ip for ip, c in counts.items() if c >= threshold and ip not in skip]
 
     def _scan_waf_autoblock_for_site(self, site):
@@ -2053,7 +2100,7 @@ class frankenphp_main:
             if not ip:
                 continue
             counts[ip] = counts.get(ip, 0) + 1
-        skip = set(site.get("waf_whitelist", [])) | set(site.get("waf_blacklist_auto", []))
+        skip = set(site.get("waf_whitelist", [])) | set(site.get("waf_blacklist_auto", [])) | self._admin_ips()
         return [ip for ip, c in counts.items() if c >= threshold and ip not in skip]
 
     def ScanCC(self, get):
