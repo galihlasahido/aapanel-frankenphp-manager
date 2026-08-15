@@ -361,6 +361,8 @@
 			mode_waf_lb_desc: 'Caddy+WAF &rarr; backend server',
 			waf_block_label: 'Block', waf_detection_label: 'Detection-only',
 			anomaly_hint: 'Block: requests with an anomaly score &ge; threshold are rejected immediately (403). Detection-only: logged but still passed through. Higher paranoia level = stricter (more false positives).',
+			pl_names: { 1: 'PL1 — CRS default, for normal applications', 2: 'PL2 — stricter, expect some tuning', 3: 'PL3 — very strict, blocks ordinary form fields', 4: 'PL4 — extremely strict, heavy tuning required' },
+			pl_high_warning: 'At PL3 and above, OWASP CRS rejects things ordinary applications do every day. Array-notation form fields such as <code>auth[password]</code> alone trip three rules (920273, 921220, 942432) purely because of the square brackets, so a normal login form returns 403. Use these levels only for an application you are prepared to tune rule by rule.',
 			waf_methods_hint: 'Leave all unchecked = use OWASP CRS default (only GET/HEAD/POST/OPTIONS allowed, and ALL method-override attempts via the <span class="fp-mono">_method</span> parameter/<span class="fp-mono">X-HTTP-Method-Override</span> header are automatically rejected as an attack &mdash; this would block Laravel/Symfony forms using <span class="fp-mono">@method(\'PUT\')</span> etc). Check the methods this app uses (e.g. PUT/PATCH/DELETE) so both the real method and overrides to it are allowed, the rest stay blocked.',
 			custom_rule_placeholder: 'optional, ModSecurity/Coraza SecRule syntax, one or more lines',
 			custom_rule_hint: 'Runs AFTER the OWASP CRS rules. Example: <span class="fp-mono">SecRule REQUEST_HEADERS:User-Agent "badbot" "id:1000001,deny,status:403,log"</span>. Use ID &ge; 1000000 (IDs 900000-900999 are reserved internally, will be rejected). Must not contain a backtick. Automatically validated before being applied &mdash; if the syntax is wrong, the change is discarded and the site won\'t go down.',
@@ -584,6 +586,8 @@
 			mode_waf_lb_desc: 'Caddy+WAF &rarr; backend server',
 			waf_block_label: 'Block', waf_detection_label: 'Detection-only',
 			anomaly_hint: 'Block: request dengan skor anomali &ge; threshold langsung ditolak (403). Detection-only: dicatat di log tapi tetap diteruskan. Paranoia level makin tinggi makin ketat (lebih banyak false-positive).',
+			pl_names: { 1: 'PL1 — default CRS, untuk aplikasi biasa', 2: 'PL2 — lebih ketat, biasanya perlu penyetelan', 3: 'PL3 — sangat ketat, memblokir kolom form biasa', 4: 'PL4 — teramat ketat, wajib disetel rule per rule' },
+			pl_high_warning: 'Mulai PL3, OWASP CRS menolak hal-hal yang dilakukan aplikasi biasa setiap hari. Kolom form bernotasi array seperti <code>auth[password]</code> saja memicu tiga rule sekaligus (920273, 921220, 942432) semata-mata karena tanda kurung sikunya, sehingga form login biasa berbalas 403. Pakai level ini hanya untuk aplikasi yang memang siap Anda setel rule demi rule.',
 			waf_methods_hint: 'Kosongkan semua = pakai default OWASP CRS (hanya GET/HEAD/POST/OPTIONS diizinkan, dan SEMUA percobaan override method lewat parameter <span class="fp-mono">_method</span>/header <span class="fp-mono">X-HTTP-Method-Override</span> otomatis ditolak sebagai serangan &mdash; ini akan memblokir form Laravel/Symfony yang pakai <span class="fp-mono">@method(\'PUT\')</span> dkk). Centang method yang dipakai app ini (mis. PUT/PATCH/DELETE) supaya method asli maupun override ke method tsb diizinkan, sisanya tetap ditolak.',
 			custom_rule_placeholder: 'opsional, syntax ModSecurity/Coraza SecRule, satu atau lebih baris',
 			custom_rule_hint: 'Dijalankan SETELAH rule OWASP CRS. Contoh: <span class="fp-mono">SecRule REQUEST_HEADERS:User-Agent "badbot" "id:1000001,deny,status:403,log"</span>. Pakai ID &ge; 1000000 (ID 900000-900999 dipakai internal, akan ditolak). Tidak boleh mengandung backtick. Divalidasi otomatis sebelum diterapkan &mdash; kalau syntax salah, perubahan dibatalkan dan situs tidak akan down.',
@@ -2248,11 +2252,12 @@
 			'<div class="fp-subsection fp_section_waf">' +
 			'<div class="fp-subsection-title">' + fpT('waf_settings_title') + '</div>' +
 			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('engine') + '</div>' + fpSeg('fp_s_waf_engine', [{ v: 'on', t: fpT('waf_block_label') }, { v: 'detection', t: fpT('waf_detection_label') }], wafEngineVal) + '</div>' +
-			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('paranoia_level') + '</div><select class="fp-select" id="fp_s_waf_paranoia" style="max-width:120px;">' +
-			paranoiaLevels.map(function (p) { return '<option value="' + p + '"' + (wafParanoiaVal == p ? ' selected' : '') + '>PL' + p + '</option>'; }).join('') +
+			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('paranoia_level') + '</div><select class="fp-select" id="fp_s_waf_paranoia" style="max-width:340px;">' +
+			paranoiaLevels.map(function (p) { return '<option value="' + p + '"' + (wafParanoiaVal == p ? ' selected' : '') + '>' + fpEsc((fpT('pl_names') || {})[p] || ('PL' + p)) + '</option>'; }).join('') +
 			'</select></div>' +
 			'<div class="fp-subrow"><div class="fp-form-label">' + fpT('anomaly_threshold') + '</div><input class="fp-input" id="fp_s_waf_threshold" type="text" value="' + fpEsc(wafThresholdVal) + '" style="max-width:100px;"></div>' +
 			'<div class="fp-hint" style="margin-top:4px;">' + fpT('anomaly_hint') + '</div>' +
+			'<div class="fp-hint" id="fp_pl_warning" style="margin-top:6px;padding:8px 10px;border-radius:6px;background:#fff6e5;border:1px solid #f0c987;color:#8a5a00;display:none;">' + fpT('pl_high_warning') + '</div>' +
 			'<div class="fp-subrow" style="align-items:flex-start;margin-top:8px;"><div class="fp-form-label" style="padding-top:6px;">' + fpT('allowed_http_methods') + '</div><div class="fp-form-field"><div class="fp-method-checks" id="fp_s_waf_methods">' +
 			httpMethods.map(function (m) { return '<label><input type="checkbox" value="' + m + '"' + (wafAllowedMethodsVal.indexOf(m) !== -1 ? ' checked' : '') + '> ' + m + '</label>'; }).join('') +
 			'</div><div class="fp-hint" style="margin-top:4px;">' + fpT('waf_methods_hint') + '</div></div></div>' +
@@ -2409,6 +2414,9 @@
 		});
 		$('#fp_s_ba_enabled').change(function () { $('.fp_row_ba').toggle($(this).is(':checked')); });
 		$('.fp_row_ba').toggle(baEnabledVal);
+		function fpPlWarn() { $('#fp_pl_warning').toggle(parseInt($('#fp_s_waf_paranoia').val(), 10) >= 3); }
+		$('#fp_s_waf_paranoia').change(fpPlWarn);
+		fpPlWarn();
 		window.fpBaCollectUsers = fpBaCollectUsers;
 		});
 		$('#fp_s_waf_engine .fp-seg-opt').click(function () {
