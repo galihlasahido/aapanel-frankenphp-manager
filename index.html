@@ -2379,6 +2379,7 @@
 		$('#fp_mode_picker').on('click', '.fp-mode-card', function () {
 			$('#fp_s_mode').val($(this).data('mode'));
 			toggleFields();
+		});
 
 		// Baris kredensial. Password yang sudah tersimpan TIDAK pernah dikirim balik ke
 		// browser - kolomnya dibiarkan kosong, dan kosong berarti "jangan diubah", supaya
@@ -2418,7 +2419,6 @@
 		$('#fp_s_waf_paranoia').change(fpPlWarn);
 		fpPlWarn();
 		window.fpBaCollectUsers = fpBaCollectUsers;
-		});
 		$('#fp_s_waf_engine .fp-seg-opt').click(function () {
 			$('#fp_s_waf_engine .fp-seg-opt').removeClass('sel');
 			$(this).addClass('sel');
