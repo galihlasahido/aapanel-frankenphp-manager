@@ -143,6 +143,10 @@ php_run "$@"
 class frankenphp_main:
     __install_dir = "/www/server/frankenphp"
     __bin = __install_dir + "/bin/frankenphp"
+    # Socket admin Caddy - dipakai untuk reload tanpa memutus koneksi.
+    # Ditaruh di dalam install dir yang memang sudah chown www:www, supaya
+    # frankenphp (jalan sebagai www) bisa membuatnya tanpa izin tambahan.
+    __admin_socket = __install_dir + "/run/admin.sock"
     __config_file = __install_dir + "/config.json"
     __caddyfile = __install_dir + "/Caddyfile"
     __install_log = "/tmp/frankenphp_install.log"
@@ -1316,6 +1320,23 @@ class frankenphp_main:
                 "\t\trespond \"{http.error.status_code} {http.error.status_text} [ref:{http.error.id}]\" {http.error.status_code}\n"
                 "\t}\n"
             )
+        if mode in ("waf_php", "waf_proxy") and not s.get("skip_waf"):
+            # skip_waf: the coraza_waf Caddy module wraps the ResponseWriter for
+            # EVERY request on this site regardless of whether any rule fires -
+            # ctl:ruleEngine=Off (see waf_bypass_paths) only turns off rule
+            # EVALUATION, not that wrapping. Found proxying Reverb (realtime ATS
+            # chat) through this same waf_proxy mode: a WebSocket upgrade's
+            # "101 Switching Protocols" response headers never reached the
+            # client at all - curl and Node's `ws` both saw the connection jump
+            # straight to raw frame bytes with no HTTP status line, because
+            # coraza-caddy's wrapper buffers/consumes the response instead of
+            # passing an upgrade through untouched. Turning off rule evaluation
+            # for the path changed nothing, because the wrapper itself was still
+            # in the pipeline; only skipping the module's registration entirely
+            # fixed it. Only meaningful for sites with no WAF need at all (a
+            # WebSocket-only proxy target). Not exposed in the UI, only settable
+            # the way this flag itself was added - editing config.json directly
+            # and calling _apply_caddyfile.
             body += self._waf_block(
                 s.get("waf_engine", "on"), s.get("waf_paranoia", 1), s.get("waf_threshold", 5),
                 s.get("waf_custom_rules", ""), s.get("waf_whitelist", []), s.get("waf_blacklist", []),
@@ -1379,10 +1400,47 @@ class frankenphp_main:
         return "%s {\n%s}\n" % (s["domain"], body)
 
     def _build_caddyfile_content(self, sites, port, root):
-        global_opts = "\tfrankenphp\n\torder php_server before file_server\n\tadmin off\n"
+        # Admin endpoint dipakai HANYA untuk reload tanpa putus (lihat _apply_config).
+        # Sengaja unix socket, bukan TCP localhost:2019: soket ikut izin berkas, sedangkan
+        # port TCP bisa diketuk proses mana pun di mesin ini. Catatan jujur soal batasnya -
+        # frankenphp jalan sebagai www dan kode PHP situs juga jalan di dalamnya sebagai www,
+        # jadi situs yang jebol tetap bisa menjangkau soket ini. Itu bukan pintu baru: berkas
+        # Caddyfile pun sudah chown www:www, jadi situs yang jebol sudah bisa menulis ulang
+        # konfigurasi - bedanya cuma "berlaku sekarang" vs "berlaku saat restart berikutnya".
+        # Memisahkan betul-betul butuh PHP jalan sebagai user lain dari frankenphp.
+        global_opts = (
+            "\tfrankenphp\n\torder php_server before file_server\n"
+            "\tadmin unix/%s\n"
+        ) % self.__admin_socket
         needs_waf = any(s.get("mode") in ("waf_php", "waf_proxy") for s in sites)
         if needs_waf:
             global_opts += "\torder coraza_waf first\n"
+        # force_http1: WebSocket upgrade (Connection/Upgrade headers) is an
+        # HTTP/1.1-only mechanism - it has no meaning in HTTP/2, which needs the
+        # very different RFC 8441 Extended CONNECT instead. Caddy advertises h2/h3
+        # by default, browsers negotiate it automatically for a fresh connection,
+        # and a WebSocket client sending classic upgrade headers over that h2
+        # connection gets a bare 500 from the proxied backend. `protocols` can only
+        # be pinned per LISTENER (a `servers` global-options block), not inside a
+        # site block, because ALPN is negotiated before Caddy even knows which
+        # site (Host/SNI) the connection is for - irrelevant on shared :443, but
+        # this flag only makes sense for a site on its OWN port anyway (e.g. a
+        # WebSocket backend like Reverb proxied on domain:PORT). Discovered wiring
+        # Reverb (realtime ATS chat) behind this same reverse_proxy machinery:
+        # curl forced to --http1.1 worked every time, curl's default
+        # (h2-preferring) failed identically to a real browser. Not exposed in the
+        # UI, only settable the way it was added - editing config.json directly
+        # and calling _apply_caddyfile.
+        for site in sites:
+            if not site.get("force_http1"):
+                continue
+            domain = site.get("domain", "")
+            if ":" not in domain:
+                continue
+            listen_port = domain.rsplit(":", 1)[1]
+            if not listen_port.isdigit():
+                continue
+            global_opts += "\tservers :%s {\n\t\tprotocols h1\n\t}\n" % listen_port
         if sites:
             email = next((s.get("email") for s in sites if s.get("email")), "")
             if email:
@@ -1419,10 +1477,38 @@ class frankenphp_main:
             err_msg = err_lines[-1] if err_lines else (out.strip().splitlines()[-1] if out.strip() else "unknown error")
             return False, self._t("config_invalid_not_applied", detail=err_msg)
         public.WriteFile(self.__caddyfile, content)
+        # Direktori soket admin harus ada sebelum frankenphp mencoba membuatnya.
+        public.ExecShell("mkdir -p %s" % os.path.dirname(self.__admin_socket))
         public.ExecShell("chown -R www:www %s" % self.__install_dir)
-        public.ExecShell("systemctl restart %s" % self.__service)
-        time.sleep(2)
+
+        # Reload dulu, restart hanya kalau reload gagal. Ini bukan sekadar
+        # penghematan waktu: panel ini sendiri bisa dilayani FrankenPHP
+        # (domain panel bermode waf_proxy), jadi "systemctl restart" memutus
+        # koneksi yang sedang membawa jawaban simpan itu sendiri - spinner
+        # "Saving & restarting..." menggantung selamanya dan refresh pertama
+        # kena ERR_CONNECTION_REFUSED karena port memang belum terikat lagi.
+        # Reload menukar konfigurasi tanpa melepas listener, jadi koneksi yang
+        # sedang jalan tidak ikut mati. Konfigurasinya sudah divalidasi di atas.
+        reload_cmd = "%s reload --config %s --adapter caddyfile --address unix/%s 2>&1" % (
+            self.__bin, self.__caddyfile, self.__admin_socket
+        )
+        out = public.ExecShell(reload_cmd)
+        reloaded = self._service_running() and not self._reload_failed(out)
+        if not reloaded:
+            # Instance lama mungkin belum punya admin socket (mis. baru upgrade
+            # dari versi yang menulis "admin off"), jadi sekali restart tetap
+            # diperlukan supaya konfigurasi baru - termasuk socket itu - terpasang.
+            public.ExecShell("systemctl restart %s" % self.__service)
+            time.sleep(2)
         return True, None
+
+    @staticmethod
+    def _reload_failed(shell_out):
+        text = (shell_out[0] if isinstance(shell_out, (list, tuple)) else shell_out) or ""
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", "ignore")
+        low = text.lower()
+        return ("error" in low) or ("refused" in low) or ("no such file" in low)
 
     # ---- install/uninstall (custom async flow, dipoll dari index.html) ----
 
@@ -2381,7 +2467,13 @@ class frankenphp_main:
         except:
             ts_to = None
 
-        events = self._get_waf_events(domain)
+        # Nomor ref itu unik lintas domain, dan halaman 403 yang dilihat
+        # pengunjung HANYA menyebut ref - bukan domainnya. Kalau pencarian ref
+        # tetap dikunci ke domain yang kebetulan sedang dipilih, orang yang
+        # memegang ref harus menebak tab mana yang benar, dan yang salah tebak
+        # akan yakin datanya hilang. Jadi khusus pencarian ref, cari ke semua
+        # domain; kolom domain pada hasil yang menunjukkan asalnya.
+        events = self._get_waf_events(None if ref_filter else domain)
         if ip_filter:
             events = [e for e in events if ip_filter in (e.get("client_ip") or "")]
         if ref_filter:
