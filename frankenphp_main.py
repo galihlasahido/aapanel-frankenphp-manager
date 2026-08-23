@@ -206,6 +206,15 @@ class frankenphp_main:
             "domain_not_found": "Domain {domain} not found",
             "domain_required": "Domain is required",
             "domain_not_found_or_not_lb": "Domain not found or not in WAF + Load Balancer mode",
+            "waf_exc_path_required": "Path pattern is required",
+            "waf_exc_fields_required": "At least 1 field name is required",
+            "waf_exc_invalid_tag": "Invalid tag/category name",
+            "waf_exc_invalid_field": "Invalid field name: {field}",
+            "waf_exc_invalid_pattern": "Invalid path pattern (regex): {err}",
+            "waf_exc_added": "Exception added and applied",
+            "waf_exc_invalid_id": "Invalid exception ID",
+            "waf_exc_not_found": "Exception not found",
+            "waf_exc_removed": "Exception removed and applied",
             "cc_waf_autoblock_not_enabled": "Neither CC Defense nor WAF Auto-Block is enabled for this domain",
             "interval_must_be_number": "Interval must be a number",
             "interval_unknown": "Unknown interval: {value}",
@@ -325,6 +334,15 @@ class frankenphp_main:
             "domain_not_found": "Domain {domain} tidak ditemukan",
             "domain_required": "Domain wajib diisi",
             "domain_not_found_or_not_lb": "Domain tidak ditemukan atau bukan mode WAF + Load Balancer",
+            "waf_exc_path_required": "Path pattern wajib diisi",
+            "waf_exc_fields_required": "Minimal 1 nama field wajib diisi",
+            "waf_exc_invalid_tag": "Nama tag/kategori tidak valid",
+            "waf_exc_invalid_field": "Nama field tidak valid: {field}",
+            "waf_exc_invalid_pattern": "Path pattern (regex) tidak valid: {err}",
+            "waf_exc_added": "Exception berhasil ditambahkan dan diterapkan",
+            "waf_exc_invalid_id": "ID exception tidak valid",
+            "waf_exc_not_found": "Exception tidak ditemukan",
+            "waf_exc_removed": "Exception berhasil dihapus dan diterapkan",
             "cc_waf_autoblock_not_enabled": "CC Defense maupun WAF Auto-Block belum diaktifkan untuk domain ini",
             "interval_must_be_number": "Interval harus angka",
             "interval_unknown": "Interval tidak dikenal: {value}",
@@ -2288,6 +2306,150 @@ class frankenphp_main:
         result["msg"] = self._t("site_added_ip" if is_ip else "site_added", domain=domain)
         result["status"] = True
         return result
+
+    # ---- WAF exceptions: friendly builder on top of the raw waf_custom_rules
+    # textarea. Each exception is stored as a plain SecRule appended to that
+    # same field (so it survives through the existing _waf_block()/
+    # _apply_caddyfile() machinery untouched), wrapped in a recognizable
+    # comment marker so it can be listed/removed again without needing a
+    # separate storage format. Anything a user already typed into the raw
+    # textarea by hand is left alone - it just has to come BEFORE the first
+    # marker line, since removal only reconstructs marker blocks.
+    __waf_exc_marker_re = re.compile(
+        r'# --- exception:(?P<id>\d+) note:"(?P<note>(?:[^"\\]|\\.)*)" ---\n'
+        r'(?P<body>.*?)(?=\n# --- exception:\d+ note:|\Z)',
+        re.DOTALL
+    )
+    __waf_exc_name_re = re.compile(r'^[A-Za-z0-9_.\[\]-]+$')
+
+    def _next_waf_exception_id(self, custom_rules):
+        used = set(int(m.group('id')) for m in self.__waf_exc_marker_re.finditer(custom_rules or ""))
+        candidate = 901000
+        while candidate in used:
+            candidate += 1
+        return candidate
+
+    def ListWafExceptions(self, get):
+        domain = get.domain.strip() if 'domain' in get else ""
+        cfg = self._get_config()
+        sites = cfg.get("sites", [])
+        site = next((s for s in sites if s["domain"] == domain), None)
+        if site is None:
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
+        rules_text = site.get("waf_custom_rules", "") or ""
+        items = [
+            {
+                "id": int(m.group('id')),
+                "note": m.group('note').replace('\\"', '"'),
+                "rule": m.group('body').strip(),
+            }
+            for m in self.__waf_exc_marker_re.finditer(rules_text)
+        ]
+        items.sort(key=lambda x: x["id"])
+        return {"status": True, "exceptions": items}
+
+    def AddWafException(self, get):
+        domain = get.domain.strip() if 'domain' in get else ""
+        path_pattern = get.path_pattern.strip() if 'path_pattern' in get else ""
+        fields_raw = get.fields.strip() if 'fields' in get else ""
+        tag = (get.tag.strip() if 'tag' in get else "") or "OWASP_CRS"
+        note = get.note.strip() if 'note' in get else ""
+
+        if not domain:
+            return public.ReturnMsg(False, self._t("domain_required"))
+        if not path_pattern:
+            return public.ReturnMsg(False, self._t("waf_exc_path_required"))
+        fields = [f.strip() for f in fields_raw.split(",") if f.strip()]
+        if not fields:
+            return public.ReturnMsg(False, self._t("waf_exc_fields_required"))
+        if not self.__waf_exc_name_re.match(tag):
+            return public.ReturnMsg(False, self._t("waf_exc_invalid_tag"))
+        for f in fields:
+            if not self.__waf_exc_name_re.match(f):
+                return public.ReturnMsg(False, self._t("waf_exc_invalid_field", field=f))
+        try:
+            re.compile(path_pattern)
+        except re.error as e:
+            return public.ReturnMsg(False, self._t("waf_exc_invalid_pattern", err=str(e)))
+
+        cfg = self._get_config()
+        sites = cfg.get("sites", [])
+        idx = next((i for i, s in enumerate(sites) if s["domain"] == domain), None)
+        if idx is None:
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
+
+        site = dict(sites[idx])
+        existing = site.get("waf_custom_rules", "") or ""
+        rule_id = self._next_waf_exception_id(existing)
+
+        # Each continued line inside a quoted SecLang actions string needs a
+        # trailing backslash before the newline - a bare "," + newline
+        # silently breaks the action list (Coraza rejects the whole rule as
+        # "invalid actions for rule with operator" at config-apply time,
+        # caught by _apply_caddyfile()'s validation before anything is
+        # written, but still worth getting right the first time).
+        targets = ",\\\n".join(
+            '\t\t\t\tctl:ruleRemoveTargetByTag=%s;ARGS:%s' % (tag, f) for f in fields
+        )
+        safe_note = (note or ("Exception %d" % rule_id)).replace('"', '\\"')
+        block = (
+            '# --- exception:%d note:"%s" ---\n'
+            '\t\t\tSecRule REQUEST_FILENAME "@rx %s" \\\n'
+            '\t\t\t\t"id:%d,phase:1,pass,nolog,\\\n'
+            '%s"'
+        ) % (rule_id, safe_note, path_pattern, rule_id, targets)
+
+        new_rules = (existing.rstrip() + "\n\n" + block).strip() if existing.strip() else block
+        site["waf_custom_rules"] = new_rules
+
+        candidate_sites = list(sites)
+        candidate_sites[idx] = site
+        ok, err = self._apply_caddyfile(candidate_sites, cfg.get("port", 8080), cfg.get("root"))
+        if not ok:
+            return public.ReturnMsg(False, err)
+
+        cfg["sites"] = candidate_sites
+        public.WriteFile(self.__config_file, json.dumps(cfg))
+        return {"status": True, "msg": self._t("waf_exc_added"), "id": rule_id}
+
+    def RemoveWafException(self, get):
+        domain = get.domain.strip() if 'domain' in get else ""
+        try:
+            rule_id = int(get.id)
+        except Exception:
+            return public.ReturnMsg(False, self._t("waf_exc_invalid_id"))
+
+        cfg = self._get_config()
+        sites = cfg.get("sites", [])
+        idx = next((i for i, s in enumerate(sites) if s["domain"] == domain), None)
+        if idx is None:
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
+
+        site = dict(sites[idx])
+        existing = site.get("waf_custom_rules", "") or ""
+
+        matches = list(self.__waf_exc_marker_re.finditer(existing))
+        if not any(int(m.group('id')) == rule_id for m in matches):
+            return public.ReturnMsg(False, self._t("waf_exc_not_found"))
+
+        first_marker_start = matches[0].start() if matches else len(existing)
+        prefix = existing[:first_marker_start].strip()
+        kept_blocks = [
+            '# --- exception:%s note:"%s" ---\n%s' % (m.group('id'), m.group('note'), m.group('body').strip())
+            for m in matches if int(m.group('id')) != rule_id
+        ]
+        new_rules = "\n\n".join(([prefix] if prefix else []) + kept_blocks)
+        site["waf_custom_rules"] = new_rules
+
+        candidate_sites = list(sites)
+        candidate_sites[idx] = site
+        ok, err = self._apply_caddyfile(candidate_sites, cfg.get("port", 8080), cfg.get("root"))
+        if not ok:
+            return public.ReturnMsg(False, err)
+
+        cfg["sites"] = candidate_sites
+        public.WriteFile(self.__config_file, json.dumps(cfg))
+        return {"status": True, "msg": self._t("waf_exc_removed")}
 
     def UpdateSite(self, get):
         if not self._is_installed():

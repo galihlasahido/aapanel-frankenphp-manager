@@ -181,6 +181,17 @@
 	.fp-install-icon { width: 46px; height: 46px; border-radius: 12px; background: #eef2ff; color: #4338ca; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; margin: 0 auto 14px; }
 	.fp-install-desc { font-size: 13px; color: #6b7280; line-height: 1.7; max-width: 460px; margin: 0 auto 18px; }
 	#fp_install_status { display: none; margin-top: 14px; }
+
+	/* WAF exception modal */
+	.fp-modal-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 20px; }
+	.fp-modal-box { background: #fff; border-radius: 10px; width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+	.fp-modal-head { padding: 14px 18px; border-bottom: 1px solid #eceff2; font-size: 15px; font-weight: 700; color: #1f2937; }
+	.fp-modal-body { padding: 16px 18px; overflow-y: auto; }
+	.fp-modal-foot { padding: 12px 18px; border-top: 1px solid #eceff2; text-align: right; }
+	.fp-modal-close { float: right; cursor: pointer; color: #9ca3af; font-size: 18px; line-height: 1; }
+	.fp-modal-close:hover { color: #374151; }
+	.fp-exc-list-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f2f4f6; }
+	.fp-exc-list-row:last-child { border-bottom: none; }
 </style>
 <div id="fp_plugin">
 	<div style="text-align:center;padding:60px 0;color:#9ca3af;font-size:13px;" id="fp_loading">Memuat status FrankenPHP...</div>
@@ -335,7 +346,7 @@
 			add_domain_btn: '+ Add Domain',
 			no_domain_registered_click: 'No domain registered yet &mdash; click "+ Add Domain" to get started.',
 			ssl_auto_hint: 'Automatic SSL via Let\'s Encrypt (Caddy) for PHP and PHP+WAF modes &mdash; the domain\'s DNS must point to this server & ports 80/443 must be open.',
-			filter_ip_placeholder: 'Filter IP', filter_ref_placeholder: 'Filter Ref No.',
+			filter_ip_placeholder: 'Filter IP', filter_ref_placeholder: 'Filter Ref No.', sort_by_time: 'Sort by time (newest/oldest first)',
 			from_time: 'From time', to_time: 'To time',
 			no_waf_domain_monitor_hint: 'No domain with PHP+WAF or WAF+Load Balancer mode yet. Enable WAF in the <b>Domain</b> tab to start monitoring attacks.',
 			whitelist_bypass_hint: '(fully bypasses WAF)',
@@ -451,6 +462,20 @@
 			hours_ago_suffix: ' hours ago', requests_comma: ' requests, ', disk: 'Disk',
 			domain_access_option: 'Domain: {domain} (access)', domain_waf_event_option: 'Domain: {domain} (WAF events)',
 			domain_not_found_plain: 'Domain not found',
+			waf_exc_add_btn: '+ Add exception', waf_exc_manage_btn: 'Manage exceptions',
+			waf_exc_modal_title: 'Add WAF Exception',
+			waf_exc_intro: 'A specific rule category will stop inspecting the field(s) below, but only for requests matching this path — everything else on the site keeps being checked normally.',
+			waf_exc_path_label: 'Path pattern (regex)', waf_exc_path_hint: 'Matched against REQUEST_FILENAME, e.g. /some/path/[0-9]+/action$',
+			waf_exc_fields_label: 'Field name(s), comma separated', waf_exc_fields_hint: 'The exact ARGS/parameter name(s) from the blocked request',
+			waf_exc_tag_label: 'Rule category to exempt', waf_exc_note_label: 'Note (optional)',
+			waf_exc_tag_all: 'All categories (safest, recommended)', waf_exc_tag_rce: 'Remote Command Execution',
+			waf_exc_tag_xss: 'Cross-Site Scripting (XSS)', waf_exc_tag_sqli: 'SQL Injection',
+			waf_exc_tag_lfi: 'Local File Inclusion', waf_exc_tag_rfi: 'Remote File Inclusion',
+			waf_exc_tag_protocol: 'Protocol violation',
+			waf_exc_save_btn: 'Save & Apply', waf_exc_saving: 'Applying...',
+			waf_exc_list_title: 'Existing exceptions for {domain}', waf_exc_list_empty: 'No exceptions yet.',
+			waf_exc_delete_btn: 'Delete', waf_exc_confirm_delete: 'Delete this exception? The excluded field(s) will be inspected by the WAF again.',
+			waf_exc_view_rule: 'View generated rule',
 		},
 		id: {
 			active: 'Aktif', enable: 'Aktifkan', cancel: 'Batal', edit: 'Edit', delete_: 'Hapus',
@@ -560,7 +585,7 @@
 			add_domain_btn: '+ Tambah Domain',
 			no_domain_registered_click: 'Belum ada domain terdaftar &mdash; klik "+ Tambah Domain" untuk mulai.',
 			ssl_auto_hint: 'SSL otomatis via Let\'s Encrypt (Caddy) untuk mode PHP dan PHP+WAF &mdash; DNS domain harus mengarah ke server ini &amp; port 80/443 terbuka.',
-			filter_ip_placeholder: 'Filter IP', filter_ref_placeholder: 'Filter No. Ref',
+			filter_ip_placeholder: 'Filter IP', filter_ref_placeholder: 'Filter No. Ref', sort_by_time: 'Urutkan berdasarkan waktu (terbaru/terlama dulu)',
 			from_time: 'Dari waktu', to_time: 'Sampai waktu',
 			no_waf_domain_monitor_hint: 'Belum ada domain dengan mode PHP+WAF atau WAF+Load Balancer. Aktifkan WAF di tab <b>Domain</b> untuk mulai memantau serangan.',
 			whitelist_bypass_hint: '(lewati WAF sepenuhnya)',
@@ -676,6 +701,20 @@
 			hours_ago_suffix: ' jam lalu', requests_comma: ' request, ', disk: 'Disk',
 			domain_access_option: 'Domain: {domain} (akses)', domain_waf_event_option: 'Domain: {domain} (event WAF)',
 			domain_not_found_plain: 'Domain tidak ditemukan',
+			waf_exc_add_btn: '+ Buat exception', waf_exc_manage_btn: 'Kelola exception',
+			waf_exc_modal_title: 'Tambah Exception WAF',
+			waf_exc_intro: 'Kategori rule tertentu akan berhenti memeriksa field di bawah ini, tapi HANYA untuk request yang cocok dengan path ini — bagian lain dari situs tetap diperiksa seperti biasa.',
+			waf_exc_path_label: 'Pattern path (regex)', waf_exc_path_hint: 'Dicocokkan ke REQUEST_FILENAME, mis. /some/path/[0-9]+/action$',
+			waf_exc_fields_label: 'Nama field, pisahkan koma', waf_exc_fields_hint: 'Nama ARGS/parameter persis dari request yang diblokir',
+			waf_exc_tag_label: 'Kategori rule yang dikecualikan', waf_exc_note_label: 'Catatan (opsional)',
+			waf_exc_tag_all: 'Semua kategori (paling aman, disarankan)', waf_exc_tag_rce: 'Remote Command Execution',
+			waf_exc_tag_xss: 'Cross-Site Scripting (XSS)', waf_exc_tag_sqli: 'SQL Injection',
+			waf_exc_tag_lfi: 'Local File Inclusion', waf_exc_tag_rfi: 'Remote File Inclusion',
+			waf_exc_tag_protocol: 'Pelanggaran protokol',
+			waf_exc_save_btn: 'Simpan & Terapkan', waf_exc_saving: 'Menerapkan...',
+			waf_exc_list_title: 'Exception yang sudah ada untuk {domain}', waf_exc_list_empty: 'Belum ada exception.',
+			waf_exc_delete_btn: 'Hapus', waf_exc_confirm_delete: 'Hapus exception ini? Field yang dikecualikan akan diperiksa WAF lagi.',
+			waf_exc_view_rule: 'Lihat rule yang dihasilkan',
 		},
 	};
 	function fpT(key) { return (fpI18n[fpLang] && fpI18n[fpLang][key]) || (fpI18n.en && fpI18n.en[key]) || key; }
@@ -684,8 +723,13 @@
 	var fpActiveTab = 'overview';
 	var fpGeoRange = '7d';
 	var fpWafEvents = [];
+	// Urutan tabel keamanan. Default terbaru-dulu: yang baru saja terjadi
+	// hampir selalu yang dicari. Diurut atas SELURUH hasil, bukan cuma
+	// halaman yang tampak, supaya klik header tidak sekadar mengaduk 25 baris.
+	var fpWafSortDesc = true;
 	var fpWafPage = 1;
 	var fpWafPageSize = 25;
+	var fpWafPageEvents = [];
 
 	// Data centroid negara (kode ISO-2 -> [nama, lat, lng, emoji bendera]) - dipakai untuk
 	// posisi bubble di peta serangan. Sumber: mledoze/countries (MIT).
@@ -1648,12 +1692,17 @@
 	}
 
 	function fpRenderWafTable(protectionBox, cards, domain) {
+		fpWafEvents.sort(function (a, b) {
+			var d = (a.ts || 0) - (b.ts || 0);
+			return fpWafSortDesc ? -d : d;
+		});
 		var total = fpWafEvents.length;
 		var pages = Math.max(1, Math.ceil(total / fpWafPageSize));
 		if (fpWafPage > pages) fpWafPage = pages;
 		var pageEvents = fpWafEvents.slice((fpWafPage - 1) * fpWafPageSize, fpWafPage * fpWafPageSize);
+		fpWafPageEvents = pageEvents;
 
-		var rows = pageEvents.map(function (e) {
+		var rows = pageEvents.map(function (e, i) {
 			var d = e.ts ? new Date(e.ts * 1000) : null;
 			var waktu = d ? d.toLocaleString() : '-';
 			return '<tr>' +
@@ -1665,19 +1714,40 @@
 					// berbunyi sama persis untuk serangan sungguhan dan untuk kolom formulir
 					// yang kebetulan berisi kata GET - hanya baris inilah yang membedakannya.
 					(e.matched_data ? '<div class="fp-hint fp-mono" style="margin-top:2px;word-break:break-all;">' + fpEsc(e.matched_data) + '</div>' : '') + '</td>' +
-				'<td class="fp-mono" style="max-width:260px;word-break:break-all;">' + fpEsc(e.uri) + '</td>' +
+				'<td class="fp-mono" style="max-width:260px;word-break:break-all;">' + fpEsc(e.uri) +
+					// Pencarian nomor ref menjangkau semua domain (halaman 403 tidak
+					// menyebut domain, jadi pemegang ref tak bisa menebak tab yang benar).
+					// Kalau hasilnya ternyata dari domain lain, katakan - tanpa ini baris
+					// itu tampak seperti milik domain yang sedang dibuka.
+					(e.domain && e.domain !== domain ? '<div class="fp-hint" style="margin-top:2px;">' + fpEsc(e.domain) + '</div>' : '') + '</td>' +
 				'<td>' + fpEsc(e.score) + '</td>' +
 				'<td class="fp-mono" style="white-space:nowrap;">' + fpEsc(e.unique_id) + '</td>' +
+				'<td style="white-space:nowrap;"><a href="javascript:;" class="fp-waf-exc-add" data-widx="' + i + '">' + fpT('waf_exc_add_btn') + '</a></td>' +
 				'</tr>';
 		}).join('');
 
+		var manageBtn = '<div style="margin-bottom:8px;text-align:right;"><button type="button" class="btn btn-default btn-sm" id="fp_waf_exc_manage_btn">' + fpT('waf_exc_manage_btn') + '</button></div>';
+
 		var table = total ?
-			'<div class="fp-table-wrap"><table class="fp-table"><thead><tr><th>' + fpT('time') + '</th><th>IP</th><th>' + fpT('category') + '</th><th>' + fpT('rule') + '</th><th>URI</th><th>' + fpT('score') + '</th><th>' + fpT('ref') + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
+			'<div class="fp-table-wrap"><table class="fp-table"><thead><tr><th id="fp_waf_sort_time" style="cursor:pointer;white-space:nowrap;" title="' + fpT('sort_by_time') + '">' + fpT('time') + ' ' + (fpWafSortDesc ? '\u25BC' : '\u25B2') + '</th><th>IP</th><th>' + fpT('category') + '</th><th>' + fpT('rule') + '</th><th>URI</th><th>' + fpT('score') + '</th><th>' + fpT('ref') + '</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
 			'<div class="fp-table-wrap"><div class="fp-empty">' + fpT('no_attacks_filter_domain') + '</div></div>';
 
-		$('#fp_sec_content').html(protectionBox + cards + table + fpWafPagination(total));
+		$('#fp_sec_content').html(protectionBox + cards + manageBtn + table + fpWafPagination(total));
 		fpBindProtectionBox(domain);
 
+		$('.fp-waf-exc-add').click(function () {
+			var e = fpWafPageEvents[$(this).data('widx')];
+			fpOpenWafExceptionModal(domain, e);
+		});
+		$('#fp_waf_exc_manage_btn').click(function () { fpOpenWafExceptionManager(domain); });
+
+		$('#fp_waf_sort_time').click(function () {
+			fpWafSortDesc = !fpWafSortDesc;
+			// Balik ke halaman 1: setelah urutan berubah, tetap di halaman 7
+			// menampilkan baris yang sama sekali tak berhubungan dengan klik tadi.
+			fpWafPage = 1;
+			fpRenderWafTable(protectionBox, cards, domain);
+		});
 		$('#fp_waf_page_prev').click(function () { fpWafPage--; fpRenderWafTable(protectionBox, cards, domain); });
 		$('#fp_waf_page_next').click(function () { fpWafPage++; fpRenderWafTable(protectionBox, cards, domain); });
 	}
@@ -1717,6 +1787,143 @@
 				'</div>';
 
 			fpRenderWafTable(protectionBox, cards, domain);
+		});
+	}
+
+	// ---- WAF exceptions ----
+	// A lightweight builder on top of the existing raw waf_custom_rules
+	// textarea (site edit form) - lets a false-positive block be turned into
+	// a scoped exclusion (path + field name + rule category) without hand-
+	// writing SecLang syntax. Reachable either from a blocked event row
+	// ("+ Add exception", pre-filled from that event) or from the standalone
+	// "Manage exceptions" list.
+
+	function fpModalOpen(title, bodyHtml, footHtml) {
+		fpModalClose();
+		var $bg = $(
+			'<div class="fp-modal-backdrop" id="fp_modal_backdrop">' +
+			'<div class="fp-modal-box">' +
+			'<div class="fp-modal-head"><span class="fp-modal-close" id="fp_modal_close">&times;</span>' + fpEsc(title) + '</div>' +
+			'<div class="fp-modal-body">' + bodyHtml + '</div>' +
+			(footHtml ? '<div class="fp-modal-foot">' + footHtml + '</div>' : '') +
+			'</div></div>'
+		);
+		$('body').append($bg);
+		$('#fp_modal_close').click(fpModalClose);
+		$bg.click(function (ev) { if (ev.target === this) fpModalClose(); });
+		return $bg;
+	}
+	function fpModalClose() { $('#fp_modal_backdrop').remove(); }
+
+	function fpGuessFieldsFromMatchedData(matchedData) {
+		var names = {};
+		var re = /ARGS:([A-Za-z0-9_.\[\]-]+)/g, m;
+		while ((m = re.exec(matchedData || ''))) { names[m[1]] = true; }
+		return Object.keys(names);
+	}
+	function fpGuessPathPattern(uri) {
+		var path = (uri || '').split('?')[0];
+		var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+		var parts = path.split('/').map(function (seg) {
+			return /^[0-9]+$/.test(seg) ? '[0-9]+' : esc(seg);
+		});
+		return parts.join('/') + '$';
+	}
+
+	function fpWafExceptionFormHtml(prefill) {
+		prefill = prefill || {};
+		var tags = ['OWASP_CRS', 'attack-rce', 'attack-xss', 'attack-sqli', 'attack-lfi', 'attack-rfi', 'attack-protocol'];
+		var tagLabels = {
+			OWASP_CRS: fpT('waf_exc_tag_all'), 'attack-rce': fpT('waf_exc_tag_rce'), 'attack-xss': fpT('waf_exc_tag_xss'),
+			'attack-sqli': fpT('waf_exc_tag_sqli'), 'attack-lfi': fpT('waf_exc_tag_lfi'), 'attack-rfi': fpT('waf_exc_tag_rfi'),
+			'attack-protocol': fpT('waf_exc_tag_protocol')
+		};
+		return '' +
+			'<div class="fp-hint" style="margin-bottom:14px;">' + fpT('waf_exc_intro') + '</div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('waf_exc_path_label') + '</div><div class="fp-form-field">' +
+			'<input class="fp-input fp-mono" id="fp_exc_path" type="text" value="' + fpEsc(prefill.path || '') + '">' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('waf_exc_path_hint') + '</div></div></div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('waf_exc_fields_label') + '</div><div class="fp-form-field">' +
+			'<input class="fp-input fp-mono" id="fp_exc_fields" type="text" value="' + fpEsc(prefill.fields || '') + '">' +
+			'<div class="fp-hint" style="margin-top:4px;">' + fpT('waf_exc_fields_hint') + '</div></div></div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('waf_exc_tag_label') + '</div><div class="fp-form-field">' +
+			'<select class="fp-select" id="fp_exc_tag">' + tags.map(function (t) {
+				return '<option value="' + t + '"' + (t === (prefill.tag || 'OWASP_CRS') ? ' selected' : '') + '>' + fpEsc(tagLabels[t]) + '</option>';
+			}).join('') + '</select></div></div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">' + fpT('waf_exc_note_label') + '</div><div class="fp-form-field">' +
+			'<input class="fp-input" id="fp_exc_note" type="text" value="' + fpEsc(prefill.note || '') + '"></div></div>' +
+			'<div id="fp_exc_form_err" style="color:#dc2626;font-size:12.5px;margin-top:6px;"></div>';
+	}
+
+	function fpOpenWafExceptionModal(domain, event) {
+		var prefill = { path: '', fields: '', tag: 'OWASP_CRS', note: '' };
+		if (event) {
+			prefill.path = fpGuessPathPattern(event.uri);
+			prefill.fields = fpGuessFieldsFromMatchedData(event.matched_data).join(', ');
+			prefill.note = fpEsc(event.category || '') ? (event.category + (event.unique_id ? ' (' + event.unique_id + ')' : '')) : '';
+		}
+		var foot = '<button type="button" class="btn btn-default btn-sm" onclick="fpModalClose()">' + fpT('cancel') + '</button> ' +
+			'<button type="button" class="btn btn-success btn-sm" id="fp_exc_save_btn">' + fpT('waf_exc_save_btn') + '</button>';
+		fpModalOpen(fpT('waf_exc_modal_title'), fpWafExceptionFormHtml(prefill), foot);
+		$('#fp_exc_save_btn').click(function () { fpSubmitWafExceptionForm(domain); });
+	}
+
+	function fpSubmitWafExceptionForm(domain) {
+		var path = $('#fp_exc_path').val().trim();
+		var fields = $('#fp_exc_fields').val().trim();
+		var tag = $('#fp_exc_tag').val();
+		var note = $('#fp_exc_note').val().trim();
+		if (!path || !fields) {
+			$('#fp_exc_form_err').text(fpT('waf_exc_path_required') + ' / ' + fpT('waf_exc_fields_required'));
+			return;
+		}
+		var $btn = $('#fp_exc_save_btn').prop('disabled', true).text(fpT('waf_exc_saving'));
+		fpAjaxPost('AddWafException', { domain: domain, path_pattern: path, fields: fields, tag: tag, note: note }, function (r) {
+			if (!r.status) {
+				$btn.prop('disabled', false).text(fpT('waf_exc_save_btn'));
+				$('#fp_exc_form_err').text(r.msg || '');
+				return;
+			}
+			fpModalClose();
+			layer.msg(r.msg, { icon: 1 });
+			fpLoadWafEvents();
+		});
+	}
+
+	function fpOpenWafExceptionManager(domain) {
+		var foot = '<button type="button" class="btn btn-default btn-sm" onclick="fpModalClose()">' + fpT('cancel') + '</button> ' +
+			'<button type="button" class="btn btn-success btn-sm" id="fp_exc_add_new_btn">' + fpT('waf_exc_add_btn') + '</button>';
+		fpModalOpen(fpT('waf_exc_list_title').replace('{domain}', domain), '<div id="fp_exc_list_body">' + fpT('loading') + '</div>', foot);
+		$('#fp_exc_add_new_btn').click(function () { fpOpenWafExceptionModal(domain, null); });
+		fpAjaxPost('ListWafExceptions', { domain: domain }, function (r) {
+			if (!r.status) { $('#fp_exc_list_body').html('<div class="fp-hint">' + fpEsc(r.msg) + '</div>'); return; }
+			fpRenderWafExceptionList(domain, r.exceptions || []);
+		});
+	}
+
+	function fpRenderWafExceptionList(domain, items) {
+		if (!items.length) { $('#fp_exc_list_body').html('<div class="fp-empty">' + fpT('waf_exc_list_empty') + '</div>'); return; }
+		var html = items.map(function (it) {
+			return '' +
+				'<div class="fp-exc-list-row">' +
+				'<div style="flex:1;min-width:0;">' +
+				'<div style="font-weight:600;">' + fpEsc(it.note) + '</div>' +
+				'<details style="margin-top:4px;"><summary class="fp-hint" style="cursor:pointer;">' + fpT('waf_exc_view_rule') + '</summary>' +
+				'<pre class="fp-mono" style="white-space:pre-wrap;word-break:break-all;font-size:11.5px;background:#f7f8fa;padding:8px;border-radius:6px;margin-top:4px;">' + fpEsc(it.rule) + '</pre></details>' +
+				'</div>' +
+				'<button type="button" class="btn btn-danger btn-sm fp-exc-del-btn" data-id="' + it.id + '" style="flex-shrink:0;">' + fpT('waf_exc_delete_btn') + '</button>' +
+				'</div>';
+		}).join('');
+		$('#fp_exc_list_body').html(html);
+		$('.fp-exc-del-btn').click(function () {
+			var id = $(this).data('id');
+			layer.confirm(fpT('waf_exc_confirm_delete'), { icon: 3, title: fpT('confirmation_title') }, function (idx) {
+				layer.close(idx);
+				fpAjaxPost('RemoveWafException', { domain: domain, id: id }, function (r) {
+					layer.msg(r.msg, { icon: r.status ? 1 : 2 });
+					if (r.status) { fpOpenWafExceptionManager(domain); }
+				});
+			});
 		});
 	}
 
@@ -2379,7 +2586,6 @@
 		$('#fp_mode_picker').on('click', '.fp-mode-card', function () {
 			$('#fp_s_mode').val($(this).data('mode'));
 			toggleFields();
-		});
 
 		// Baris kredensial. Password yang sudah tersimpan TIDAK pernah dikirim balik ke
 		// browser - kolomnya dibiarkan kosong, dan kosong berarti "jangan diubah", supaya
@@ -2419,6 +2625,7 @@
 		$('#fp_s_waf_paranoia').change(fpPlWarn);
 		fpPlWarn();
 		window.fpBaCollectUsers = fpBaCollectUsers;
+		});
 		$('#fp_s_waf_engine .fp-seg-opt').click(function () {
 			$('#fp_s_waf_engine .fp-seg-opt').removeClass('sel');
 			$(this).addClass('sel');
