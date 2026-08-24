@@ -1875,16 +1875,24 @@
 	}
 
 	function fpOpenWafExceptionModal(domain, event) {
+		// A ref-number search spans every domain (see fpRenderWafTable's own
+		// comment on this) -- the row clicked can belong to a DIFFERENT
+		// domain than whatever the dropdown currently has selected. An
+		// exception is domain-scoped, so saving against the dropdown's
+		// domain here would silently attach it to the wrong site's config.
+		var effectiveDomain = (event && event.domain) || domain;
 		var prefill = { path: '', fields: '', tag: 'OWASP_CRS', note: '' };
 		if (event) {
 			prefill.path = fpGuessPathPattern(event.uri);
 			prefill.fields = fpGuessFieldsFromMatchedData(event.matched_data).join(', ');
 			prefill.note = fpEsc(event.category || '') ? (event.category + (event.unique_id ? ' (' + event.unique_id + ')' : '')) : '';
 		}
+		var domainRow = '<div class="fp-form-row"><div class="fp-form-label">Domain</div><div class="fp-form-field">' +
+			'<input class="fp-input fp-mono" type="text" value="' + fpEsc(effectiveDomain) + '" readonly></div></div>';
 		var foot = '<button type="button" class="btn btn-default btn-sm" onclick="fpModalClose()">' + fpT('cancel') + '</button> ' +
 			'<button type="button" class="btn btn-success btn-sm" id="fp_exc_save_btn">' + fpT('waf_exc_save_btn') + '</button>';
-		fpModalOpen(fpT('waf_exc_modal_title'), fpWafExceptionFormHtml(prefill), foot);
-		$('#fp_exc_save_btn').click(function () { fpSubmitWafExceptionForm(domain); });
+		fpModalOpen(fpT('waf_exc_modal_title'), domainRow + fpWafExceptionFormHtml(prefill), foot);
+		$('#fp_exc_save_btn').click(function () { fpSubmitWafExceptionForm(effectiveDomain); });
 	}
 
 	function fpSubmitWafExceptionForm(domain) {
@@ -1910,15 +1918,25 @@
 	}
 
 	function fpOpenUnblockIpModal(domain, event) {
+		// Same cross-domain trap as fpOpenWafExceptionModal above: a
+		// ref-number search spans every domain, and the blacklist an IP
+		// actually needs removing from belongs to the EVENT's domain, not
+		// necessarily whatever the dropdown happens to have selected right
+		// now -- confirmed live: this row's event.domain was
+		// wamsdev.mitraintibersama.com while the dropdown was still on
+		// panel.advance.web.id from an earlier, unrelated search.
+		var effectiveDomain = (event && event.domain) || domain;
 		var ip = (event && event.client_ip) || '';
 		var body = '<div class="fp-hint" style="margin-bottom:14px;">' + fpT('waf_unblock_ip_intro') + '</div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">Domain</div><div class="fp-form-field">' +
+			'<input class="fp-input fp-mono" type="text" value="' + fpEsc(effectiveDomain) + '" readonly></div></div>' +
 			'<div class="fp-form-row"><div class="fp-form-label">IP</div><div class="fp-form-field">' +
 			'<input class="fp-input fp-mono" id="fp_unblock_ip_value" type="text" value="' + fpEsc(ip) + '" readonly></div></div>' +
 			'<div id="fp_unblock_ip_err" style="color:#dc2626;font-size:12.5px;margin-top:6px;"></div>';
 		var foot = '<button type="button" class="btn btn-default btn-sm" onclick="fpModalClose()">' + fpT('cancel') + '</button> ' +
 			'<button type="button" class="btn btn-success btn-sm" id="fp_unblock_ip_btn">' + fpT('waf_unblock_ip_confirm_btn') + '</button>';
 		fpModalOpen(fpT('waf_unblock_ip_modal_title'), body, foot);
-		$('#fp_unblock_ip_btn').click(function () { fpSubmitUnblockIp(domain, ip); });
+		$('#fp_unblock_ip_btn').click(function () { fpSubmitUnblockIp(effectiveDomain, ip); });
 	}
 
 	function fpSubmitUnblockIp(domain, ip) {
