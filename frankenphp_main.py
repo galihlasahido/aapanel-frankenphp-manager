@@ -231,6 +231,9 @@ class frankenphp_main:
             "ip_auto_blocked": "{count} IP(s) automatically blocked ({detail})",
             "no_autoblock_to_clear": "No auto-blocked IPs to clear",
             "autoblock_cleared": "{count} auto-blocked IP(s) cleared",
+            "ip_required": "IP address is required",
+            "ip_not_in_blacklist": "{ip} is not on the blacklist",
+            "ip_unblocked": "{ip} removed from the blacklist",
             "log_lines_processed": "{count} new log line(s) processed",
             "php_cli_wrapper_active": "The 'php' command now runs FrankenPHP's embedded PHP",
             "mode_unknown": "Unknown mode: {mode}",
@@ -359,6 +362,9 @@ class frankenphp_main:
             "ip_auto_blocked": "{count} IP diblokir otomatis ({detail})",
             "no_autoblock_to_clear": "Tidak ada IP auto-block untuk dibersihkan",
             "autoblock_cleared": "{count} IP auto-block dibersihkan",
+            "ip_required": "Alamat IP wajib diisi",
+            "ip_not_in_blacklist": "{ip} tidak ada di blacklist",
+            "ip_unblocked": "{ip} dikeluarkan dari blacklist",
             "log_lines_processed": "{count} baris log baru diproses",
             "php_cli_wrapper_active": "Command 'php' sekarang menjalankan PHP embedded FrankenPHP",
             "mode_unknown": "Mode tidak dikenal: {mode}",
@@ -2842,6 +2848,44 @@ class frankenphp_main:
         cfg["sites"] = candidate_sites
         public.WriteFile(self.__config_file, json.dumps(cfg))
         return {"status": True, "msg": self._t("autoblock_cleared", count=cleared_count)}
+
+    def UnblockIp(self, get):
+        """Keluarkan SATU IP dari blacklist (manual maupun hasil auto-block CC
+        Defense/WAF Auto-Block) untuk satu domain -- untuk baris event WAF yang
+        blok-nya berasal dari rule IP blacklist (id:900600), bukan dari rule
+        kategori/path tertentu. Exception builder (AddWafException) tidak bisa
+        menolong kasus ini: itu mengecualikan KATEGORI RULE pada SATU PATH,
+        sementara blok IP terjadi di phase 1 sebelum path/kategori mana pun
+        dievaluasi -- exception path+kategori apa pun tidak akan pernah dicek."""
+        if not self._is_installed():
+            return public.ReturnMsg(False, self._t("not_installed"))
+        domain = get.domain.strip() if ('domain' in get and get.domain.strip()) else ""
+        ip = get.ip.strip() if ('ip' in get and get.ip.strip()) else ""
+        if not ip:
+            return public.ReturnMsg(False, self._t("ip_required"))
+        cfg = self._get_config()
+        sites = cfg.get("sites", [])
+        idx = next((i for i, s in enumerate(sites) if s["domain"] == domain), None)
+        if idx is None:
+            return public.ReturnMsg(False, self._t("domain_not_found", domain=domain))
+        site = sites[idx]
+        manual = list(site.get("waf_blacklist_manual", []))
+        auto = list(site.get("waf_blacklist_auto", []))
+        if ip not in manual and ip not in auto:
+            return {"status": True, "msg": self._t("ip_not_in_blacklist", ip=ip)}
+
+        new_site = dict(site)
+        new_site["waf_blacklist_manual"] = [x for x in manual if x != ip]
+        new_site["waf_blacklist_auto"] = [x for x in auto if x != ip]
+        new_site["waf_blacklist"] = sorted(set(new_site["waf_blacklist_manual"]) | set(new_site["waf_blacklist_auto"]))
+        candidate_sites = list(sites)
+        candidate_sites[idx] = new_site
+        ok, err = self._apply_caddyfile(candidate_sites, cfg.get("port", 8080), cfg.get("root"))
+        if not ok:
+            return public.ReturnMsg(False, err)
+        cfg["sites"] = candidate_sites
+        public.WriteFile(self.__config_file, json.dumps(cfg))
+        return {"status": True, "msg": self._t("ip_unblocked", ip=ip)}
 
     # ---- statistik website (collector: access log -> SQLite, incremental) ----
 

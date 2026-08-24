@@ -463,6 +463,9 @@
 			domain_access_option: 'Domain: {domain} (access)', domain_waf_event_option: 'Domain: {domain} (WAF events)',
 			domain_not_found_plain: 'Domain not found',
 			waf_exc_add_btn: '+ Add exception', waf_exc_manage_btn: 'Manage exceptions',
+			waf_unblock_ip_btn: 'Unblock this IP', waf_unblock_ip_modal_title: 'Unblock IP',
+			waf_unblock_ip_intro: 'This request was blocked because the IP itself is on the blacklist — not because of a path/category rule match, so a path-based exception would not stop it. Removing the IP below un-blocks it entirely for this domain (whether it landed on the blacklist manually or via CC Defense/WAF Auto-Block).',
+			waf_unblock_ip_confirm_btn: 'Unblock', waf_unblock_ip_working: 'Unblocking…',
 			waf_exc_modal_title: 'Add WAF Exception',
 			waf_exc_intro: 'A specific rule category will stop inspecting the field(s) below, but only for requests matching this path — everything else on the site keeps being checked normally.',
 			waf_exc_path_label: 'Path pattern (regex)', waf_exc_path_hint: 'Matched against REQUEST_FILENAME, e.g. /some/path/[0-9]+/action$',
@@ -702,6 +705,9 @@
 			domain_access_option: 'Domain: {domain} (akses)', domain_waf_event_option: 'Domain: {domain} (event WAF)',
 			domain_not_found_plain: 'Domain tidak ditemukan',
 			waf_exc_add_btn: '+ Buat exception', waf_exc_manage_btn: 'Kelola exception',
+			waf_unblock_ip_btn: 'Buka blokir IP ini', waf_unblock_ip_modal_title: 'Buka Blokir IP',
+			waf_unblock_ip_intro: 'Request ini diblokir karena IP-nya sendiri ada di blacklist — bukan karena cocok dengan rule path/kategori tertentu, jadi exception berbasis path tidak akan menghentikannya. Mengeluarkan IP di bawah ini membuka blokirnya sepenuhnya untuk domain ini (baik yang masuk blacklist secara manual maupun lewat CC Defense/WAF Auto-Block).',
+			waf_unblock_ip_confirm_btn: 'Buka Blokir', waf_unblock_ip_working: 'Membuka blokir…',
 			waf_exc_modal_title: 'Tambah Exception WAF',
 			waf_exc_intro: 'Kategori rule tertentu akan berhenti memeriksa field di bawah ini, tapi HANYA untuk request yang cocok dengan path ini — bagian lain dari situs tetap diperiksa seperti biasa.',
 			waf_exc_path_label: 'Pattern path (regex)', waf_exc_path_hint: 'Dicocokkan ke REQUEST_FILENAME, mis. /some/path/[0-9]+/action$',
@@ -1722,7 +1728,16 @@
 					(e.domain && e.domain !== domain ? '<div class="fp-hint" style="margin-top:2px;">' + fpEsc(e.domain) + '</div>' : '') + '</td>' +
 				'<td>' + fpEsc(e.score) + '</td>' +
 				'<td class="fp-mono" style="white-space:nowrap;">' + fpEsc(e.unique_id) + '</td>' +
-				'<td style="white-space:nowrap;"><a href="javascript:;" class="fp-waf-exc-add" data-widx="' + i + '">' + fpT('waf_exc_add_btn') + '</a></td>' +
+				(function () {
+					// IP-blacklist rows (id:900600, phase 1) never reach path/category
+					// evaluation -- a path+category exception can never match them, so
+					// offering that builder here would look like a fix that silently
+					// does nothing. Offer the thing that actually undoes THIS block instead.
+					var isIpBlacklistRule = (e.message === 'IP diblokir (blacklist)');
+					var label = isIpBlacklistRule ? fpT('waf_unblock_ip_btn') : fpT('waf_exc_add_btn');
+					var mode = isIpBlacklistRule ? 'unblock_ip' : 'exception';
+					return '<td style="white-space:nowrap;"><a href="javascript:;" class="fp-waf-exc-add" data-widx="' + i + '" data-mode="' + mode + '">' + label + '</a></td>';
+				})() +
 				'</tr>';
 		}).join('');
 
@@ -1737,7 +1752,11 @@
 
 		$('.fp-waf-exc-add').click(function () {
 			var e = fpWafPageEvents[$(this).data('widx')];
-			fpOpenWafExceptionModal(domain, e);
+			if ($(this).data('mode') === 'unblock_ip') {
+				fpOpenUnblockIpModal(domain, e);
+			} else {
+				fpOpenWafExceptionModal(domain, e);
+			}
 		});
 		$('#fp_waf_exc_manage_btn').click(function () { fpOpenWafExceptionManager(domain); });
 
@@ -1882,6 +1901,32 @@
 			if (!r.status) {
 				$btn.prop('disabled', false).text(fpT('waf_exc_save_btn'));
 				$('#fp_exc_form_err').text(r.msg || '');
+				return;
+			}
+			fpModalClose();
+			layer.msg(r.msg, { icon: 1 });
+			fpLoadWafEvents();
+		});
+	}
+
+	function fpOpenUnblockIpModal(domain, event) {
+		var ip = (event && event.client_ip) || '';
+		var body = '<div class="fp-hint" style="margin-bottom:14px;">' + fpT('waf_unblock_ip_intro') + '</div>' +
+			'<div class="fp-form-row"><div class="fp-form-label">IP</div><div class="fp-form-field">' +
+			'<input class="fp-input fp-mono" id="fp_unblock_ip_value" type="text" value="' + fpEsc(ip) + '" readonly></div></div>' +
+			'<div id="fp_unblock_ip_err" style="color:#dc2626;font-size:12.5px;margin-top:6px;"></div>';
+		var foot = '<button type="button" class="btn btn-default btn-sm" onclick="fpModalClose()">' + fpT('cancel') + '</button> ' +
+			'<button type="button" class="btn btn-success btn-sm" id="fp_unblock_ip_btn">' + fpT('waf_unblock_ip_confirm_btn') + '</button>';
+		fpModalOpen(fpT('waf_unblock_ip_modal_title'), body, foot);
+		$('#fp_unblock_ip_btn').click(function () { fpSubmitUnblockIp(domain, ip); });
+	}
+
+	function fpSubmitUnblockIp(domain, ip) {
+		var $btn = $('#fp_unblock_ip_btn').prop('disabled', true).text(fpT('waf_unblock_ip_working'));
+		fpAjaxPost('UnblockIp', { domain: domain, ip: ip }, function (r) {
+			if (!r.status) {
+				$btn.prop('disabled', false).text(fpT('waf_unblock_ip_confirm_btn'));
+				$('#fp_unblock_ip_err').text(r.msg || '');
 				return;
 			}
 			fpModalClose();
