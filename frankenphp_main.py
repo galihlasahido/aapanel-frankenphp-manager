@@ -2328,9 +2328,22 @@ class frankenphp_main:
     )
     __waf_exc_name_re = re.compile(r'^[A-Za-z0-9_.\[\]-]+$')
 
-    def _next_waf_exception_id(self, custom_rules):
-        used = set(int(m.group('id')) for m in self.__waf_exc_marker_re.finditer(custom_rules or ""))
-        candidate = 901000
+    def _next_waf_exception_id(self, all_sites):
+        # Coraza compiles every site's rules into one shared WAF engine, so
+        # SecRule ids must be unique ACROSS ALL SITES, not just within the
+        # site being edited - scanning only the current site's rules let two
+        # different domains both pick the same "next free" id independently.
+        # The starting point also has to clear OWASP CRS's own reserved id
+        # space (900000-999999, e.g. REQUEST-901-INITIALIZATION.conf's
+        # 901001) - colliding with a real CRS rule id fails the same way
+        # ("duplicated rule id") even though nothing here allocated it.
+        # 1000000+ is the conventional "local rules" range recommended by
+        # CRS docs, safely clear of that reserved space.
+        used = set()
+        for s in (all_sites or []):
+            rules_text = s.get("waf_custom_rules", "") or ""
+            used.update(int(m.group('id')) for m in self.__waf_exc_marker_re.finditer(rules_text))
+        candidate = 1000000
         while candidate in used:
             candidate += 1
         return candidate
@@ -2386,7 +2399,7 @@ class frankenphp_main:
 
         site = dict(sites[idx])
         existing = site.get("waf_custom_rules", "") or ""
-        rule_id = self._next_waf_exception_id(existing)
+        rule_id = self._next_waf_exception_id(sites)
 
         # Each continued line inside a quoted SecLang actions string needs a
         # trailing backslash before the newline - a bare "," + newline
